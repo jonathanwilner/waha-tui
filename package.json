@@ -1,6 +1,6 @@
 {
   "name": "@muhammedaksam/waha-tui",
-  "version": "1.5.14",
+  "version": "1.5.15",
   "description": "TUI client for WhatsApp using WAHA (WhatsApp HTTP API) - manage chats, send messages, and more from your terminal",
   "type": "module",
   "bin": {
@@ -65,7 +65,7 @@
     "jiti": "^2.6.1",
     "lint-staged": "^16.2.7",
     "prettier": "^3.8.1",
-    "typescript-eslint": "^8.55.0"
+    "typescript-eslint": "^8.56.0"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"
