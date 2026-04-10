@@ -143,7 +143,7 @@ export function ConfigView() {
           attributes: TextAttributes.BOLD,
         }),
         Text({
-          content: "Configuration saved to ~/.waha-tui/config.json",
+          content: "Configuration saved to ~/.config/waha-tui/config.json",
           fg: WhatsAppTheme.textSecondary,
         })
       )
