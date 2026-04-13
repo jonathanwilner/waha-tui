@@ -16,6 +16,7 @@ export interface UIState {
   currentView: ViewType
   activeFilter: ActiveFilter
   activeIcon: ActiveIcon
+  sidebarFocused: boolean
   searchQuery: string
 }
 
@@ -23,6 +24,7 @@ export const initialUIState: UIState = {
   currentView: "sessions",
   activeFilter: "all",
   activeIcon: "chats",
+  sidebarFocused: false,
   searchQuery: "",
 }
 
@@ -31,6 +33,7 @@ export interface UIActions extends SliceActions<UIState> {
   setActiveFilter(activeFilter: ActiveFilter): void
   setSearchQuery(searchQuery: string): void
   setActiveIcon(activeIcon: ActiveIcon): void
+  setSidebarFocused(sidebarFocused: boolean): void
 }
 
 export function createUISlice(): StateSlice<UIState> & UIActions {
@@ -82,6 +85,11 @@ export function createUISlice(): StateSlice<UIState> & UIActions {
 
     setActiveIcon(activeIcon: ActiveIcon) {
       state = { ...state, activeIcon }
+      notify()
+    },
+
+    setSidebarFocused(sidebarFocused: boolean) {
+      state = { ...state, sidebarFocused }
       notify()
     },
   }

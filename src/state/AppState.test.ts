@@ -88,6 +88,14 @@ describe("AppState", () => {
       appState.setCurrentView("chats")
       expect(appState.getState().activeIcon).toBe("chats")
     })
+
+    it("should clear sidebar focus when switching views", () => {
+      appState.setSidebarFocused(true)
+      expect(appState.getState().sidebarFocused).toBe(true)
+
+      appState.setCurrentView("settings")
+      expect(appState.getState().sidebarFocused).toBe(false)
+    })
   })
 
   describe("setCurrentSession", () => {

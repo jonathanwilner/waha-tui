@@ -33,7 +33,8 @@ export function Footer() {
       { key: "↑↓", label: "Navigate" },
       { key: "Enter", label: "Open Chat" },
       { key: ["Ctrl + F", "/"], label: "Search" },
-      { key: ["Tab", "Shift+Tab"], label: "Filter" },
+      { key: "Tab", label: "Sidebar" },
+      { key: ["f", "Shift+F"], label: "Filter" },
       { key: ["Ctrl + A", "Meta + A"], label: "Toggle Archived" },
       { key: "s", label: "Settings" },
       { key: "Esc", label: "Back" },
@@ -52,10 +53,18 @@ export function Footer() {
     } else {
       hints.push(
         { key: "↑↓", label: "Scroll" },
+        { key: "Tab", label: "Sidebar" },
         { key: "i", label: "Type Message" },
         { key: "Esc", label: "Back to Chats" }
       )
     }
+  } else if (state.currentView === "settings") {
+    hints.push(
+      { key: "↑↓", label: "Navigate" },
+      { key: "Enter", label: "Select" },
+      { key: "Tab", label: "Sidebar" },
+      { key: "Esc", label: "Back" }
+    )
   }
 
   // Always available
