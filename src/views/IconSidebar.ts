@@ -29,6 +29,7 @@ export function IconSidebar() {
     .filter((item) => item.position === "top")
     .map((item) => {
       const isActive = state.activeIcon === item.key
+      const isFocused = state.sidebarFocused && isActive
 
       return Box(
         {
@@ -37,8 +38,8 @@ export function IconSidebar() {
           justifyContent: "center",
           alignItems: "center",
           backgroundColor: isActive ? WhatsAppTheme.activeBg : WhatsAppTheme.panelDark,
-          border: false,
-          borderColor: isActive ? WhatsAppTheme.green : undefined,
+          border: isFocused,
+          borderColor: isFocused ? WhatsAppTheme.green : undefined,
         },
         Text({
           content: item.icon,
@@ -52,6 +53,7 @@ export function IconSidebar() {
     .filter((item) => item.position === "bottom")
     .map((item) => {
       const isActive = state.activeIcon === item.key
+      const isFocused = state.sidebarFocused && isActive
 
       return Box(
         {
@@ -60,8 +62,8 @@ export function IconSidebar() {
           justifyContent: "center",
           alignItems: "center",
           backgroundColor: isActive ? WhatsAppTheme.activeBg : WhatsAppTheme.panelDark,
-          border: isActive,
-          borderColor: isActive ? WhatsAppTheme.green : undefined,
+          border: isFocused,
+          borderColor: isFocused ? WhatsAppTheme.green : undefined,
         },
         Text({
           content: item.icon,

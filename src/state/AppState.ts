@@ -177,6 +177,7 @@ class StateManager {
   // UI
   setCurrentView(currentView: ViewType): void {
     this.uiSlice.setCurrentView(currentView)
+    this.uiSlice.setSidebarFocused(false)
     this.navigationSlice.set({ lastChangeType: "view" }) // Cross-slice update
 
     // Sync active icon with view
@@ -199,6 +200,14 @@ class StateManager {
     this.navigationSlice.setSelectedChatIndex(0)
     this.navigationSlice.setChatListScrollOffset(0)
     this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  setSidebarFocused(sidebarFocused: boolean): void {
+    this.uiSlice.setSidebarFocused(sidebarFocused)
+  }
+
+  setActiveIcon(activeIcon: ActiveIcon): void {
+    this.uiSlice.setActiveIcon(activeIcon)
   }
 
   setShowingArchivedChats(showingArchivedChats: boolean): void {

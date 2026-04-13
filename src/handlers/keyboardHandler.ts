@@ -6,7 +6,7 @@
 import type { ChatSummary } from "@muhammedaksam/waha-node"
 import type { KeyEvent } from "@opentui/core"
 
-import type { AppState } from "~/state/AppState"
+import type { ActiveIcon, AppState } from "~/state/AppState"
 import {
   deleteSession,
   fetchMyProfile,
@@ -62,6 +62,90 @@ function getCurrentFilteredChats(state: AppState): ChatSummary[] {
     return state.chats.filter(isArchived)
   }
   return filterChats(state.chats, state.activeFilter, state.searchQuery)
+}
+
+const sidebarIcons: ActiveIcon[] = ["chats", "settings"]
+
+function cycleChatFilter(state: AppState, direction: 1 | -1): void {
+  const filters: Array<"all" | "unread" | "favorites" | "groups"> = [
+    "all",
+    "unread",
+    "favorites",
+    "groups",
+  ]
+  const currentIndex = filters.indexOf(state.activeFilter)
+  const nextIndex = (currentIndex + direction + filters.length) % filters.length
+  debugLog("Keyboard", `Filter: cycling to ${filters[nextIndex]}`)
+  appState.setActiveFilter(filters[nextIndex])
+}
+
+async function activateSidebarIcon(icon: ActiveIcon, state: AppState): Promise<void> {
+  appState.setActiveIcon(icon)
+  appState.setSidebarFocused(false)
+
+  if (icon === "settings") {
+    appState.setCurrentView("settings")
+    appState.setSettingsPage("main")
+    appState.setSettingsSelectedIndex(0)
+    appState.setLastChangeType("view")
+    return
+  }
+
+  if (icon === "chats" && state.currentSession) {
+    stopPresenceManagement()
+    appState.setCurrentView("chats")
+    appState.setCurrentChat(null)
+    appState.setSelectedChatIndex(0)
+    await loadChats()
+  }
+}
+
+async function handleSidebarKeys(key: KeyEvent, state: AppState): Promise<boolean> {
+  if (state.inputMode || state.contextMenu?.visible) return false
+  if (
+    state.currentView !== "chats" &&
+    state.currentView !== "conversation" &&
+    state.currentView !== "settings"
+  ) {
+    return false
+  }
+
+  if (key.name === "tab") {
+    const nextFocused = !state.sidebarFocused
+    appState.setSidebarFocused(nextFocused)
+    if (nextFocused && !sidebarIcons.includes(state.activeIcon)) {
+      appState.setActiveIcon("chats")
+    }
+    return true
+  }
+
+  if (!state.sidebarFocused) return false
+
+  const currentIndex = Math.max(0, sidebarIcons.indexOf(state.activeIcon))
+
+  if (key.name === "up" || key.name === "k") {
+    const nextIndex = (currentIndex - 1 + sidebarIcons.length) % sidebarIcons.length
+    appState.setActiveIcon(sidebarIcons[nextIndex])
+    return true
+  }
+
+  if (key.name === "down" || key.name === "j") {
+    const nextIndex = (currentIndex + 1) % sidebarIcons.length
+    appState.setActiveIcon(sidebarIcons[nextIndex])
+    return true
+  }
+
+  if (key.name === "return" || key.name === "enter" || key.name === "space") {
+    await activateSidebarIcon(state.activeIcon, state)
+    return true
+  }
+
+  if (key.name === "escape" || key.name === "right") {
+    appState.setSidebarFocused(false)
+    return true
+  }
+
+  return true
 }
 
 /**
@@ -223,25 +307,9 @@ async function handleChatsViewKeys(key: KeyEvent, state: AppState): Promise<bool
 
   const filteredChats = getCurrentFilteredChats(state)
 
-  // Tab/Shift+Tab to cycle through filters
-  if (key.name === "tab" && !state.inputMode) {
-    const filters: Array<"all" | "unread" | "favorites" | "groups"> = [
-      "all",
-      "unread",
-      "favorites",
-      "groups",
-    ]
-    const currentIndex = filters.indexOf(state.activeFilter)
-
-    if (key.shift) {
-      const prevIndex = currentIndex === 0 ? filters.length - 1 : currentIndex - 1
-      debugLog("Keyboard", `Filter: cycling backward to ${filters[prevIndex]}`)
-      appState.setActiveFilter(filters[prevIndex])
-    } else {
-      const nextIndex = (currentIndex + 1) % filters.length
-      debugLog("Keyboard", `Filter: cycling forward to ${filters[nextIndex]}`)
-      appState.setActiveFilter(filters[nextIndex])
-    }
+  // f/Shift+F to cycle through filters. Tab is reserved for sidebar focus.
+  if (key.name === "f" && !key.ctrl && !state.inputMode) {
+    cycleChatFilter(state, key.shift ? -1 : 1)
     return true
   }
 
@@ -719,6 +787,7 @@ export async function handleKeyPress(key: KeyEvent, context: KeyHandlerContext):
 
   // Priority handlers (context menu)
   if (await handleContextMenuKeys(key, state, context.renderApp)) return
+  if (await handleSidebarKeys(key, state)) return
 
   // View-specific handlers
   if (await handleQRViewKeys(key, state)) return
