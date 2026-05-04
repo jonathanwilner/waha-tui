@@ -77,6 +77,22 @@ function getCurrentFilteredChats(state: AppState): ChatSummary[] {
 
 const sidebarIcons: ActiveIcon[] = ["chats", "status", "settings"]
 
+function isTabKey(key: KeyEvent): boolean {
+  return key.name === "tab"
+}
+
+function blurActiveInput(state: AppState): void {
+  if (!state.inputMode) return
+
+  if (state.currentView === "chats") {
+    blurSearchInput()
+  } else if (state.currentView === "conversation") {
+    blurMessageInput()
+  } else {
+    appState.setInputMode(false)
+  }
+}
+
 function cycleChatFilter(state: AppState, direction: 1 | -1): void {
   const filters: Array<"all" | "unread" | "favorites" | "groups"> = [
     "all",
@@ -123,7 +139,7 @@ async function activateSidebarIcon(icon: ActiveIcon, state: AppState): Promise<v
 }
 
 async function handleSidebarKeys(key: KeyEvent, state: AppState): Promise<boolean> {
-  if (state.inputMode || state.contextMenu?.visible) return false
+  if (state.contextMenu?.visible) return false
   if (
     state.currentView !== "chats" &&
     state.currentView !== "conversation" &&
@@ -133,7 +149,8 @@ async function handleSidebarKeys(key: KeyEvent, state: AppState): Promise<boolea
     return false
   }
 
-  if (key.name === "tab") {
+  if (isTabKey(key)) {
+    blurActiveInput(state)
     const nextFocused = !state.sidebarFocused
     appState.setSidebarFocused(nextFocused)
     if (nextFocused && !sidebarIcons.includes(state.activeIcon)) {
@@ -141,6 +158,8 @@ async function handleSidebarKeys(key: KeyEvent, state: AppState): Promise<boolea
     }
     return true
   }
+
+  if (state.inputMode) return false
 
   if (!state.sidebarFocused) return false
 
