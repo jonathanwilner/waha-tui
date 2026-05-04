@@ -23,6 +23,10 @@ function envValue(name: string): string {
   return (process.env[name] || "").toLowerCase()
 }
 
+function insideTmux(): boolean {
+  return !!process.env.TMUX
+}
+
 export function supportsKittyImages(): boolean {
   if (process.env.WAHA_TUI_INLINE_IMAGES === "0") return false
   if (process.env.WAHA_TUI_INLINE_IMAGES === "1") return true
@@ -35,10 +39,19 @@ export function supportsKittyImages(): boolean {
     termProgram.includes("wezterm") ||
     !!process.env.KITTY_WINDOW_ID ||
     !!process.env.WEZTERM_PANE ||
+    insideTmux() ||
     term.includes("kitty") ||
     term.includes("ghostty") ||
     term.includes("wezterm")
   )
+}
+
+function tmuxPassthrough(data: string): string {
+  return `\x1bPtmux;${data.replaceAll("\x1b", "\x1b\x1b")}\x1b\\`
+}
+
+function kittyGraphics(data: string): string {
+  return insideTmux() ? tmuxPassthrough(data) : data
 }
 
 function writeRaw(renderer: CliRenderer, data: string): void {
@@ -76,17 +89,17 @@ function flushKittyImages(renderer: CliRenderer): void {
 
   if (ordered.length === 0) {
     if (wroteImages) {
-      writeRaw(renderer, "\x1b_Ga=d,d=A\x1b\\")
+      writeRaw(renderer, kittyGraphics("\x1b_Ga=d,d=A\x1b\\"))
       wroteImages = false
     }
     return
   }
 
-  const chunks = ["\x1b7", "\x1b_Ga=d,d=A\x1b\\"]
+  const chunks = ["\x1b7", kittyGraphics("\x1b_Ga=d,d=A\x1b\\")]
   for (const placement of ordered) {
     const image = encodeKittyImage(placement.filePath, placement.width, placement.height)
     if (!image) continue
-    chunks.push(`\x1b[${placement.y + 1};${placement.x + 1}H`, image)
+    chunks.push(`\x1b[${placement.y + 1};${placement.x + 1}H`, kittyGraphics(image))
   }
   chunks.push("\x1b8")
 

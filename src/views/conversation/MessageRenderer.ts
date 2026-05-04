@@ -335,8 +335,12 @@ export function renderMessage(
     bubble.add(forwardedRow)
   }
 
-  // Row 2: Media label (if media) — uses dimmed text for the label line
-  if (isMediaLabel) {
+  const imagePreview = renderInlineImagePreview(renderer, chatId, message)
+
+  // Row 2: Media label (if media) — uses dimmed text for the label line.
+  // Image previews replace the photo label so inline-capable terminals show
+  // the content directly instead of only the media icon.
+  if (isMediaLabel && !imagePreview) {
     const mediaLabelRow = new BoxRenderable(renderer, {
       id: `msg-${message.id || Date.now()}-media-label`,
       flexDirection: "row",
@@ -364,9 +368,23 @@ export function renderMessage(
     bubble.add(mediaLabelRow)
   }
 
-  const imagePreview = renderInlineImagePreview(renderer, chatId, message)
   if (imagePreview) {
     bubble.add(imagePreview)
+
+    if (!media.caption) {
+      const timeRow = new BoxRenderable(renderer, {
+        id: `msg-${message.id || Date.now()}-image-time`,
+        flexDirection: "row",
+        justifyContent: "flex-end",
+      })
+      timeRow.add(
+        new TextRenderable(renderer, {
+          content: timestampText,
+          fg: isFromMe ? WhatsAppTheme.textSecondary : WhatsAppTheme.textTertiary,
+        })
+      )
+      bubble.add(timeRow)
+    }
   }
 
   // Row 2.5: Caption text (if media with caption)
