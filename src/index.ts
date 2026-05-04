@@ -333,7 +333,15 @@ async function main() {
 
   // Subscribe to state changes
   appState.subscribe(() => {
-    renderApp()
+    try {
+      renderApp()
+    } catch (error) {
+      errorService.handle(error, {
+        log: true,
+        notify: true,
+        context: { type: "render" },
+      })
+    }
   })
 
   // Initial render (force rebuild)
@@ -353,13 +361,31 @@ async function main() {
   appState.setContextMenuActionCallback((actionId) => {
     const currentState = appState.getState()
     if (currentState.contextMenu) {
-      void executeContextMenuAction(actionId, currentState.contextMenu)
+      void executeContextMenuAction(actionId, currentState.contextMenu).catch((error) => {
+        errorService.handle(error, {
+          log: true,
+          notify: true,
+          context: { type: "contextMenuAction", actionId },
+        })
+      })
     }
   })
 
   // Keyboard handling using OpenTUI's keyInput event system
-  renderer.keyInput.on("keypress", async (key: KeyEvent) => {
-    await handleKeyPress(key, { renderApp })
+  renderer.keyInput.on("keypress", (key: KeyEvent) => {
+    void handleKeyPress(key, { renderApp }).catch((error) => {
+      errorService.handle(error, {
+        log: true,
+        notify: true,
+        context: {
+          type: "keypress",
+          key: key.name,
+          ctrl: key.ctrl,
+          shift: key.shift,
+          meta: key.meta,
+        },
+      })
+    })
   })
 }
 
