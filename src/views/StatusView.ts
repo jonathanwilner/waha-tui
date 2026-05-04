@@ -22,19 +22,26 @@ import {
 } from "~/utils/statusMessages"
 import { supportsKittyImages, TerminalImageRenderable } from "~/utils/terminalImages"
 
-let statusLoadRequested = false
+let statusLoadState: "idle" | "loading" | "loaded" | "error" = "idle"
 
 export function resetStatusLoadRequest(): void {
-  statusLoadRequested = false
+  statusLoadState = "idle"
 }
 
 function requestStatusMessages(): void {
-  if (statusLoadRequested) return
-  statusLoadRequested = true
-  void loadMessages(STATUS_BROADCAST_CHAT_ID).catch((error) => {
-    debugLog("StatusView", `Failed to load status messages: ${error}`)
-    statusLoadRequested = false
-  })
+  if (statusLoadState === "loading" || statusLoadState === "loaded") return
+  statusLoadState = "loading"
+  void loadMessages(STATUS_BROADCAST_CHAT_ID)
+    .then(() => {
+      statusLoadState = "loaded"
+    })
+    .catch((error) => {
+      debugLog("StatusView", `Failed to load status messages: ${error}`)
+      statusLoadState = "error"
+    })
+    .finally(() => {
+      appState.setLastChangeType("data")
+    })
 }
 
 function isImageStatus(message: WAMessageExtended): boolean {
@@ -77,7 +84,12 @@ function StatusList(statuses: WAMessageExtended[]) {
               paddingRight: 2,
             },
             Text({
-              content: statusLoadRequested ? "Loading status updates..." : "No status updates",
+              content:
+                statusLoadState === "loading"
+                  ? "Loading status updates..."
+                  : statusLoadState === "error"
+                    ? "Could not load status updates"
+                    : "No status updates",
               fg: WhatsAppTheme.textSecondary,
             })
           ),
