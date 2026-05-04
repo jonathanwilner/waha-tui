@@ -183,6 +183,8 @@ class StateManager {
     // Sync active icon with view
     if (currentView === "settings") {
       this.uiSlice.setActiveIcon("settings")
+    } else if (currentView === "status") {
+      this.uiSlice.setActiveIcon("status")
     } else if (currentView === "chats" || currentView === "conversation") {
       this.uiSlice.setActiveIcon("chats")
     }
@@ -365,6 +367,10 @@ class StateManager {
     this.navigationSlice.setSelectedChatIndex(selectedChatIndex)
   }
 
+  setSelectedStatusIndex(selectedStatusIndex: number): void {
+    this.navigationSlice.setSelectedStatusIndex(selectedStatusIndex)
+  }
+
   // Contact
   setContactsCache(contactsCache: Map<string, string>): void {
     this.contactSlice.setContactsCache(contactsCache)
@@ -542,6 +548,10 @@ class StateManager {
   // Navigation
   setChatListScrollOffset(chatListScrollOffset: number): void {
     this.navigationSlice.setChatListScrollOffset(chatListScrollOffset)
+  }
+
+  setStatusListScrollOffset(statusListScrollOffset: number): void {
+    this.navigationSlice.setStatusListScrollOffset(statusListScrollOffset)
   }
 
   setLastChangeType(lastChangeType: ChangeType): void {

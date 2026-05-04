@@ -58,6 +58,15 @@ export function Footer() {
         { key: "Esc", label: "Back to Chats" }
       )
     }
+  } else if (state.currentView === "status") {
+    hints.push(
+      { key: "↑↓", label: "Navigate" },
+      { key: "Enter", label: "Open Media" },
+      { key: "o", label: "Open Media" },
+      { key: "Tab", label: "Sidebar" },
+      { key: "Esc", label: "Back to Chats" },
+      { key: "1", label: "Sessions" }
+    )
   } else if (state.currentView === "settings") {
     hints.push(
       { key: "↑↓", label: "Navigate" },

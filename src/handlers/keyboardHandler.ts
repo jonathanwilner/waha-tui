@@ -39,6 +39,7 @@ import { startNewChat } from "~/utils/createChat"
 import { debugLog } from "~/utils/debug"
 import { filterChats, isArchived } from "~/utils/filterChats"
 import { getChatIdString } from "~/utils/formatters"
+import { getStatusMessages, STATUS_BROADCAST_CHAT_ID } from "~/utils/statusMessages"
 import { chatListManager } from "~/views/ChatListManager"
 import { blurSearchInput, clearSearchInput, focusSearchInput } from "~/views/ChatsView"
 import {
@@ -55,6 +56,7 @@ import {
 } from "~/views/QRCodeView"
 import { createNewSession } from "~/views/SessionCreate"
 import { getSettingsMenuItems } from "~/views/SettingsView"
+import { resetStatusLoadRequest } from "~/views/StatusView"
 
 /**
  * Context for keyboard handler operations
@@ -73,7 +75,7 @@ function getCurrentFilteredChats(state: AppState): ChatSummary[] {
   return filterChats(state.chats, state.activeFilter, state.searchQuery)
 }
 
-const sidebarIcons: ActiveIcon[] = ["chats", "settings"]
+const sidebarIcons: ActiveIcon[] = ["chats", "status", "settings"]
 
 function cycleChatFilter(state: AppState, direction: 1 | -1): void {
   const filters: Array<"all" | "unread" | "favorites" | "groups"> = [
@@ -100,6 +102,17 @@ async function activateSidebarIcon(icon: ActiveIcon, state: AppState): Promise<v
     return
   }
 
+  if (icon === "status" && state.currentSession) {
+    stopPresenceManagement()
+    appState.setCurrentChat(null)
+    appState.setCurrentView("status")
+    appState.setSelectedStatusIndex(0)
+    appState.setStatusListScrollOffset(0)
+    resetStatusLoadRequest()
+    await loadMessages(STATUS_BROADCAST_CHAT_ID)
+    return
+  }
+
   if (icon === "chats" && state.currentSession) {
     stopPresenceManagement()
     appState.setCurrentView("chats")
@@ -114,6 +127,7 @@ async function handleSidebarKeys(key: KeyEvent, state: AppState): Promise<boolea
   if (
     state.currentView !== "chats" &&
     state.currentView !== "conversation" &&
+    state.currentView !== "status" &&
     state.currentView !== "settings"
   ) {
     return false
@@ -180,6 +194,92 @@ async function handleContextMenuKeys(
     renderApp(true)
     return true
   }
+  return false
+}
+
+/**
+ * Handle status/photos view keyboard input
+ * Returns true if the key was handled
+ */
+async function handleStatusViewKeys(key: KeyEvent, state: AppState): Promise<boolean> {
+  if (state.currentView !== "status") return false
+
+  const statuses = getStatusMessages(state.messages.get(STATUS_BROADCAST_CHAT_ID) || [])
+
+  if ((key.name === "up" || key.name === "k") && statuses.length > 0) {
+    const newIndex = Math.max(0, state.selectedStatusIndex - 1)
+    appState.setSelectedStatusIndex(newIndex)
+    appState.setStatusListScrollOffset(
+      calculateChatListScrollOffset(newIndex, state.statusListScrollOffset, statuses.length)
+    )
+    return true
+  }
+
+  if ((key.name === "down" || key.name === "j") && statuses.length > 0) {
+    const newIndex = Math.min(statuses.length - 1, state.selectedStatusIndex + 1)
+    appState.setSelectedStatusIndex(newIndex)
+    appState.setStatusListScrollOffset(
+      calculateChatListScrollOffset(newIndex, state.statusListScrollOffset, statuses.length)
+    )
+    return true
+  }
+
+  if (key.name === "home" && statuses.length > 0) {
+    appState.setSelectedStatusIndex(0)
+    appState.setStatusListScrollOffset(0)
+    return true
+  }
+
+  if (key.name === "end" && statuses.length > 0) {
+    const lastIndex = statuses.length - 1
+    appState.setSelectedStatusIndex(lastIndex)
+    appState.setStatusListScrollOffset(
+      calculateChatListScrollOffset(lastIndex, state.statusListScrollOffset, statuses.length)
+    )
+    return true
+  }
+
+  if ((key.name === "pagedown" || key.name === "right") && statuses.length > 0) {
+    const newIndex = Math.min(statuses.length - 1, state.selectedStatusIndex + 12)
+    appState.setSelectedStatusIndex(newIndex)
+    appState.setStatusListScrollOffset(
+      calculateChatListScrollOffset(newIndex, state.statusListScrollOffset, statuses.length)
+    )
+    return true
+  }
+
+  if ((key.name === "pageup" || key.name === "left") && statuses.length > 0) {
+    const newIndex = Math.max(0, state.selectedStatusIndex - 12)
+    appState.setSelectedStatusIndex(newIndex)
+    appState.setStatusListScrollOffset(
+      calculateChatListScrollOffset(newIndex, state.statusListScrollOffset, statuses.length)
+    )
+    return true
+  }
+
+  if ((key.name === "o" || key.name === "return" || key.name === "enter") && statuses.length > 0) {
+    const selected = statuses[state.selectedStatusIndex]
+    if (selected?.id) {
+      downloadAndOpenMedia(STATUS_BROADCAST_CHAT_ID, selected.id).catch((err) => {
+        debugLog("Keyboard", `Failed to open status media: ${err}`)
+        showToast("Failed to open status media", "error")
+      })
+    }
+    return true
+  }
+
+  if (key.name === "r" && state.currentSession) {
+    resetStatusLoadRequest()
+    await loadMessages(STATUS_BROADCAST_CHAT_ID)
+    return true
+  }
+
+  if (key.name === "escape") {
+    appState.setCurrentView("chats")
+    appState.setCurrentChat(null)
+    return true
+  }
+
   return false
 }
 
@@ -857,6 +957,17 @@ async function handleGlobalKeys(key: KeyEvent, state: AppState): Promise<boolean
     return true
   }
 
+  if (key.name === "3" && !state.inputMode) {
+    if (state.currentSession) {
+      appState.setCurrentView("status")
+      appState.setSelectedStatusIndex(0)
+      appState.setStatusListScrollOffset(0)
+      resetStatusLoadRequest()
+      await loadMessages(STATUS_BROADCAST_CHAT_ID)
+    }
+    return true
+  }
+
   return false
 }
 
@@ -885,6 +996,7 @@ export async function handleKeyPress(key: KeyEvent, context: KeyHandlerContext):
   if (await handleSessionsViewKeys(key, state)) return
   if (await handleChatsViewKeys(key, state)) return
   if (await handleConversationViewKeys(key, state)) return
+  if (await handleStatusViewKeys(key, state)) return
   if (await handleSettingsViewKeys(key, state)) return
 
   // Global handlers

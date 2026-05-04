@@ -15,6 +15,7 @@ import { appState } from "~/state/AppState"
 import { ChatsView } from "~/views/ChatsView"
 import { ConversationView } from "~/views/ConversationView"
 import { IconSidebar } from "~/views/IconSidebar"
+import { StatusView } from "~/views/StatusView"
 import { WelcomeView } from "~/views/WelcomeView"
 
 type LayoutChild =
@@ -76,6 +77,10 @@ export function ThreePanelLayout({ leftPanel, rightPanel }: ThreePanelLayoutProp
  */
 export function MainLayout() {
   const state = appState.getState()
+
+  if (state.currentView === "status") {
+    return ThreePanelLayout(StatusView())
+  }
 
   // Determine what to show in the right panel
   const showConversation = state.currentView === "conversation" || state.currentChatId !== null

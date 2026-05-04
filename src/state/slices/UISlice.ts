@@ -5,6 +5,7 @@ export type ViewType =
   | "sessions"
   | "chats"
   | "conversation"
+  | "status"
   | "settings"
   | "qr"
   | "loading"

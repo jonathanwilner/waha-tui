@@ -15,9 +15,6 @@ export function IconSidebar() {
 
   const iconItems: Array<{ key: ActiveIcon; icon: string; position: "top" | "bottom" }> = [
     { key: "chats", icon: Icons.chats, position: "top" },
-    { key: "status", icon: Icons.status, position: "top" },
-    { key: "channels", icon: Icons.channels, position: "top" },
-    { key: "communities", icon: Icons.communities, position: "top" },
     // Bottom section - like WhatsApp Web
     { key: "status", icon: "📷", position: "bottom" }, // Status/Photos
     { key: "settings", icon: Icons.settings, position: "bottom" },
