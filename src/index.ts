@@ -31,6 +31,7 @@ import { appState } from "~/state/AppState"
 import { setRenderer } from "~/state/RendererContext"
 import { debugLog, initDebug } from "~/utils/debug"
 import { runMigrations } from "~/utils/migrations"
+import { setupTerminalImageRenderer } from "~/utils/terminalImages"
 import { checkForUpdates } from "~/utils/update-checker"
 import {
   ConfigView,
@@ -164,6 +165,7 @@ async function main() {
 
   // Set renderer context for imperative API usage
   setRenderer(renderer)
+  setupTerminalImageRenderer(renderer)
 
   // Cleanup function to properly restore terminal state
   let isCleanedUp = false

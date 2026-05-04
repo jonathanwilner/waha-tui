@@ -22,6 +22,139 @@ import { debugLog } from "~/utils/debug"
 import { getChatIdString } from "~/utils/formatters"
 import { getMediaDownloadDir, getMimeType, openLocalFile } from "~/utils/mediaUtils"
 
+function safeMediaName(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 180)
+}
+
+function isImageMessage(message: WAMessageExtended): boolean {
+  const type = message.type ?? message._data?.type ?? ""
+  const mimetype = message.mimetype ?? message.media?.mimetype ?? message._data?.mimetype ?? ""
+  return type === "image" || mimetype.startsWith("image/")
+}
+
+async function fetchMessageWithMedia(
+  chatId: string,
+  messageId: string
+): Promise<WAMessageExtended> {
+  const session = getSession()
+  const wahaClient = getClient()
+  const response = await wahaClient.chats.chatsControllerGetChatMessage(
+    session,
+    chatId,
+    messageId,
+    {
+      downloadMedia: true,
+    }
+  )
+  return response.data as unknown as WAMessageExtended
+}
+
+async function downloadMediaToFile(chatId: string, messageId: string): Promise<string> {
+  const wahaClient = getClient()
+  const message = await fetchMessageWithMedia(chatId, messageId)
+
+  if (!message.hasMedia && !message.mediaUrl) {
+    throw new Error("Message does not contain media")
+  }
+
+  let mediaUrl = message.media?.url || message.mediaUrl
+  if (!mediaUrl) {
+    throw new Error("Media URL not found in message payload")
+  }
+
+  // WAHA sometimes returns internal docker URLs (e.g. http://localhost:3000) for media.
+  // Substitute it with the configured WAHA API origin when possible.
+  if (wahaClient.httpClient?.defaults.baseURL && mediaUrl.startsWith("http")) {
+    try {
+      const parsedMediaUrl = new URL(mediaUrl)
+      const baseUrl = new URL(wahaClient.httpClient.defaults.baseURL)
+      parsedMediaUrl.protocol = baseUrl.protocol
+      parsedMediaUrl.host = baseUrl.host
+      parsedMediaUrl.port = baseUrl.port
+      mediaUrl = parsedMediaUrl.toString()
+    } catch (e) {
+      debugLog("Client", `Failed to parse URLs for substitution: ${e}`)
+    }
+  }
+
+  const extension = message.media?.mimetype?.split("/")[1]?.split(";")[0] || "bin"
+  const filename = safeMediaName(message.media?.filename || `media_${messageId}.${extension}`)
+  const downloadDir = await getMediaDownloadDir()
+  const filePath = join(downloadDir, filename)
+
+  if (existsSync(filePath)) {
+    return filePath
+  }
+
+  debugLog("Client", `Downloading from ${mediaUrl} to ${filePath}`)
+
+  if (wahaClient.httpClient) {
+    let relativeUrl = mediaUrl
+    try {
+      const parsed = new URL(mediaUrl)
+      relativeUrl = parsed.pathname + parsed.search
+    } catch {
+      // Fallback to absolute if parsing fails
+    }
+
+    const config = await loadConfig()
+    const apiKey = config?.wahaApiKey
+    const headers: Record<string, string> = {}
+    if (apiKey) {
+      headers["X-Api-Key"] = apiKey
+    }
+
+    const fileResponse = await wahaClient.httpClient.get(relativeUrl, {
+      responseType: "arraybuffer",
+      headers,
+    })
+    await writeFile(filePath, Buffer.from(fileResponse.data))
+  } else {
+    const fetchResponse = await fetch(mediaUrl)
+    const arrayBuffer = await fetchResponse.arrayBuffer()
+    await writeFile(filePath, Buffer.from(arrayBuffer))
+  }
+
+  return filePath
+}
+
+type MediaPreviewState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; filePath: string }
+  | { status: "error"; error: string }
+
+const mediaPreviewCache = new Map<string, MediaPreviewState>()
+
+export function getImagePreviewState(
+  chatId: string,
+  message: WAMessageExtended,
+  onChange?: () => void
+): MediaPreviewState {
+  if (!message.id || !isImageMessage(message)) return { status: "idle" }
+
+  const key = `${chatId}:${message.id}`
+  const cached = mediaPreviewCache.get(key)
+  if (cached) return cached
+
+  mediaPreviewCache.set(key, { status: "loading" })
+  void downloadMediaToFile(chatId, message.id)
+    .then((filePath) => {
+      mediaPreviewCache.set(key, { status: "ready", filePath })
+      onChange?.()
+    })
+    .catch((error) => {
+      debugLog("Client", `Failed to download image preview for ${message.id}: ${error}`)
+      mediaPreviewCache.set(key, {
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      })
+      onChange?.()
+    })
+
+  return { status: "loading" }
+}
+
 /**
  * Star or unstar a message.
  * @param messageId - The message ID to star/unstar
@@ -423,84 +556,8 @@ export async function prefetchMessagesForTopChats(count: number = 5): Promise<vo
  */
 export async function downloadAndOpenMedia(chatId: string, messageId: string): Promise<void> {
   try {
-    const session = getSession()
-    const wahaClient = getClient()
-
     debugLog("Client", `Downloading media for message: ${messageId}`)
-
-    // Fetch message with media URL
-    const response = await wahaClient.chats.chatsControllerGetChatMessage(
-      session,
-      chatId,
-      messageId,
-      {
-        downloadMedia: true,
-      }
-    )
-
-    const message = response.data as unknown as WAMessageExtended
-    if (!message.hasMedia && !message.mediaUrl) {
-      throw new Error("Message does not contain media")
-    }
-
-    let mediaUrl = message.media?.url || message.mediaUrl
-    if (!mediaUrl) {
-      throw new Error("Media URL not found in message payload")
-    }
-
-    // WAHA sometimes returns internal docker URLs (e.g. http://localhost:3000) for media.
-    // We should substitute it with the actual connected waha API url if available.
-    if (wahaClient.httpClient?.defaults.baseURL && mediaUrl.startsWith("http")) {
-      try {
-        const parsedMediaUrl = new URL(mediaUrl)
-        const baseUrl = new URL(wahaClient.httpClient.defaults.baseURL)
-        parsedMediaUrl.protocol = baseUrl.protocol
-        parsedMediaUrl.host = baseUrl.host
-        parsedMediaUrl.port = baseUrl.port
-        mediaUrl = parsedMediaUrl.toString()
-      } catch (e) {
-        debugLog("Client", `Failed to parse URLs for substitution: ${e}`)
-      }
-    }
-
-    // Determine filename from mime type or object
-    const filename =
-      message.media?.filename ||
-      `media_${messageId}.${message.media?.mimetype?.split("/")[1]?.split(";")[0] || "bin"}`
-
-    const downloadDir = await getMediaDownloadDir()
-    const filePath = join(downloadDir, filename)
-
-    debugLog("Client", `Downloading from ${mediaUrl} to ${filePath}`)
-
-    if (wahaClient.httpClient) {
-      let relativeUrl = mediaUrl
-      try {
-        const parsed = new URL(mediaUrl)
-        relativeUrl = parsed.pathname + parsed.search
-      } catch {
-        // Fallback to absolute if parsing fails
-      }
-
-      const config = await loadConfig()
-      const apiKey = config?.wahaApiKey
-      const headers: Record<string, string> = {}
-      if (apiKey) {
-        headers["X-Api-Key"] = apiKey
-      }
-
-      const fileResponse = await wahaClient.httpClient.get(relativeUrl, {
-        responseType: "arraybuffer",
-        headers,
-      })
-      await writeFile(filePath, Buffer.from(fileResponse.data))
-    } else {
-      // Fallback for custom fetch, rarely used
-      const fetchResponse = await fetch(mediaUrl)
-      const arrayBuffer = await fetchResponse.arrayBuffer()
-      await writeFile(filePath, Buffer.from(arrayBuffer))
-    }
-
+    const filePath = await downloadMediaToFile(chatId, messageId)
     debugLog("Client", `Opening media file: ${filePath}`)
     const opened = await openLocalFile(filePath)
 

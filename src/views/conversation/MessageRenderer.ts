@@ -8,11 +8,13 @@ import type { WAMessage } from "@muhammedaksam/waha-node"
 import { BoxRenderable, CliRenderer, t, TextAttributes, TextRenderable } from "@opentui/core"
 
 import type { WAMessageExtended } from "~/types"
+import { getImagePreviewState } from "~/client/messageActions"
 import { WhatsAppTheme } from "~/config/theme"
 import { appState } from "~/state/AppState"
 import { debugLog } from "~/utils/debug"
 import { formatAckStatus, getInitials, isSelfChat } from "~/utils/formatters"
 import { getMediaLabel } from "~/utils/mediaLabels"
+import { supportsKittyImages, TerminalImageRenderable } from "~/utils/terminalImages"
 import { centerText, getSenderInfo } from "~/views/conversation/MessageHelpers"
 import { renderReplyContext } from "~/views/conversation/ReplyContext"
 
@@ -59,6 +61,78 @@ export function renderReactions(
     renderedCount++
   }
 
+  return container
+}
+
+function isImageMedia(message: WAMessageExtended): boolean {
+  const type = message.type ?? message._data?.type ?? ""
+  const mimetype = message.mimetype ?? message.media?.mimetype ?? message._data?.mimetype ?? ""
+  return type === "image" || mimetype.startsWith("image/")
+}
+
+function replaceChildren(
+  container: BoxRenderable,
+  children: Array<BoxRenderable | TextRenderable>
+): void {
+  for (const child of container.getChildren()) {
+    container.remove(child.id)
+  }
+  for (const child of children) {
+    container.add(child)
+  }
+}
+
+function renderInlineImagePreview(
+  renderer: CliRenderer,
+  chatId: string | undefined,
+  message: WAMessageExtended
+): BoxRenderable | null {
+  if (!chatId || !message.id || !isImageMedia(message) || !supportsKittyImages()) return null
+
+  const previewWidth = Math.max(18, Math.min(36, Math.floor(renderer.width * 0.28)))
+  const previewHeight = Math.max(8, Math.min(14, Math.floor(previewWidth * 0.45)))
+  const container = new BoxRenderable(renderer, {
+    id: `msg-${message.id}-image-preview`,
+    flexDirection: "column",
+    width: previewWidth,
+    minHeight: 1,
+    marginTop: 1,
+    marginBottom: 1,
+  })
+
+  const update = () => {
+    const preview = getImagePreviewState(chatId, message, () => {
+      update()
+      renderer.requestRender()
+    })
+
+    if (preview.status === "ready") {
+      replaceChildren(container, [
+        new TerminalImageRenderable(
+          renderer,
+          message.id,
+          preview.filePath,
+          previewWidth,
+          previewHeight
+        ),
+      ])
+      return
+    }
+
+    const content =
+      preview.status === "error"
+        ? "Image preview unavailable; press o to open"
+        : "Loading image preview..."
+
+    replaceChildren(container, [
+      new TextRenderable(renderer, {
+        content,
+        fg: WhatsAppTheme.textTertiary,
+      }),
+    ])
+  }
+
+  update()
   return container
 }
 
@@ -288,6 +362,11 @@ export function renderMessage(
       mediaLabelRow.add(timeText)
     }
     bubble.add(mediaLabelRow)
+  }
+
+  const imagePreview = renderInlineImagePreview(renderer, chatId, message)
+  if (imagePreview) {
+    bubble.add(imagePreview)
   }
 
   // Row 2.5: Caption text (if media with caption)

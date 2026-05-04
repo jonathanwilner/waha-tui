@@ -59,4 +59,13 @@ export type WAMessageExtended = Omit<WAMessage, "participant" | "_data" | "reply
     id: string
     from?: string
   }>
+  media?: {
+    url?: string
+    filename?: string
+    mimetype?: string
+  }
+  mediaUrl?: string
+  hasMedia?: boolean
+  mimetype?: string
+  type?: string
 }
