@@ -1090,8 +1090,8 @@ async function handleGlobalKeys(key: KeyEvent, state: AppState): Promise<boolean
   if ((key.name === "4" || key.name === "g") && !state.inputMode) {
     if (state.currentSession) {
       stopPresenceManagement()
-      appState.setCurrentView("gallery")
       appState.setCurrentChat(null)
+      appState.setCurrentView("gallery")
       appState.setSelectedGalleryIndex(0)
       appState.setGalleryListScrollOffset(0)
       resetGalleryLoadRequest()
