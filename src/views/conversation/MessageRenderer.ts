@@ -70,18 +70,6 @@ function isImageMedia(message: WAMessageExtended): boolean {
   return type === "image" || mimetype.startsWith("image/")
 }
 
-function replaceChildren(
-  container: BoxRenderable,
-  children: Array<BoxRenderable | TextRenderable>
-): void {
-  for (const child of container.getChildren()) {
-    container.remove(child.id)
-  }
-  for (const child of children) {
-    container.add(child)
-  }
-}
-
 function renderInlineImagePreview(
   renderer: CliRenderer,
   chatId: string | undefined,
@@ -100,39 +88,35 @@ function renderInlineImagePreview(
     marginBottom: 1,
   })
 
-  const update = () => {
-    const preview = getImagePreviewState(chatId, message, () => {
-      update()
-      renderer.requestRender()
-    })
+  const preview = getImagePreviewState(chatId, message, () => {
+    renderer.requestRender()
+  })
 
-    if (preview.status === "ready") {
-      replaceChildren(container, [
-        new TerminalImageRenderable(
-          renderer,
-          message.id,
-          preview.filePath,
-          previewWidth,
-          previewHeight
-        ),
-      ])
-      return
-    }
-
-    const content =
-      preview.status === "error"
-        ? "Image preview unavailable; press o to open"
-        : "Loading image preview..."
-
-    replaceChildren(container, [
-      new TextRenderable(renderer, {
-        content,
-        fg: WhatsAppTheme.textTertiary,
-      }),
-    ])
+  if (preview.status === "ready") {
+    container.add(
+      new TerminalImageRenderable(
+        renderer,
+        message.id,
+        preview.filePath,
+        previewWidth,
+        previewHeight
+      )
+    )
+    return container
   }
 
-  update()
+  const content =
+    preview.status === "error"
+      ? "Image preview unavailable; press o to open"
+      : "Loading image preview..."
+
+  container.add(
+    new TextRenderable(renderer, {
+      content,
+      fg: WhatsAppTheme.textTertiary,
+    })
+  )
+
   return container
 }
 

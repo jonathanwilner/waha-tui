@@ -18,7 +18,7 @@ interface ImagePlacement {
 export type TerminalImageProtocol = "kitty" | "sixel" | "symbols"
 
 export interface TerminalImageSupport {
-  protocol: TerminalImageProtocol
+  protocol: Exclude<TerminalImageProtocol, "symbols">
   passthrough: boolean
   command?: "chafa"
   reason: string
@@ -42,13 +42,32 @@ function insideTmux(env: TerminalEnv): boolean {
   return !!env.TMUX
 }
 
+function tmuxClientTerminal(env: TerminalEnv): string {
+  if (!insideTmux(env)) return ""
+  if (env.WAHA_TUI_TMUX_CLIENT_TERM) return env.WAHA_TUI_TMUX_CLIENT_TERM.toLowerCase()
+
+  const result = spawnSync(
+    "tmux",
+    ["display-message", "-p", "#{client_termname} #{client_termfeatures} #{client_termtype}"],
+    {
+      encoding: "utf8",
+    }
+  )
+  if (result.status !== 0) return ""
+  return result.stdout.toLowerCase()
+}
+
 function hasKnownKittySupport(env: TerminalEnv): boolean {
   const term = envValue(env, "TERM")
   const termProgram = envValue(env, "TERM_PROGRAM")
+  const tmuxClient = tmuxClientTerminal(env)
 
   return Boolean(
     termProgram.includes("ghostty") ||
     termProgram.includes("wezterm") ||
+    tmuxClient.includes("ghostty") ||
+    tmuxClient.includes("kitty") ||
+    tmuxClient.includes("wezterm") ||
     !!env.KITTY_WINDOW_ID ||
     !!env.WEZTERM_PANE ||
     term.includes("kitty") ||
@@ -106,9 +125,7 @@ export function detectTerminalImageSupport(
       : null
   }
   if (forcedProtocol === "symbols") {
-    return chafaAvailable()
-      ? { protocol: "symbols", passthrough: false, command: "chafa", reason: "forced-symbols" }
-      : null
+    return null
   }
 
   if (env.WAHA_TUI_INLINE_IMAGES === "1") {
@@ -121,10 +138,6 @@ export function detectTerminalImageSupport(
   if (!tmuxPassthroughDisabled && hasKnownSixelSupport(env) && chafaAvailable()) {
     return { protocol: "sixel", passthrough, command: "chafa", reason: "sixel-chafa" }
   }
-  if (chafaAvailable()) {
-    return { protocol: "symbols", passthrough: false, command: "chafa", reason: "symbols-chafa" }
-  }
-
   return null
 }
 

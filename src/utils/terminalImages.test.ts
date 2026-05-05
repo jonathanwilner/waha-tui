@@ -49,9 +49,23 @@ describe("terminalImages", () => {
     expect(support?.passthrough).toBe(true)
   })
 
+  it("detects Kitty-capable tmux clients when TERM_PROGRAM is tmux", () => {
+    const support = detectTerminalImageSupport(
+      {
+        TERM_PROGRAM: "tmux",
+        TERM: "tmux-256color",
+        TMUX: "/tmp/tmux",
+        WAHA_TUI_TMUX_CLIENT_TERM: "xterm-ghostty bpaste,RGB,title ghostty 1.3.1",
+      },
+      hasCommands([])
+    )
+
+    expect(support).toEqual({ protocol: "kitty", passthrough: true, reason: "tmux-kitty" })
+  })
+
   it("does not assume tmux alone means inline image support", () => {
     const support = detectTerminalImageSupport(
-      { TERM: "tmux-256color", TMUX: "/tmp/tmux" },
+      { TERM: "tmux-256color", TMUX: "/tmp/tmux", WAHA_TUI_TMUX_CLIENT_TERM: "unknown" },
       hasCommands([])
     )
 
@@ -86,18 +100,22 @@ describe("terminalImages", () => {
     })
   })
 
-  it("falls back to chafa symbols on terminals without native image protocols", () => {
+  it("does not use symbol fallback because raw text output corrupts TUI layout", () => {
     const support = detectTerminalImageSupport(
       { TERM: "xterm-256color", TERM_PROGRAM: "Alacritty" },
       hasCommands(["chafa"])
     )
 
-    expect(support).toEqual({
-      protocol: "symbols",
-      passthrough: false,
-      command: "chafa",
-      reason: "symbols-chafa",
-    })
+    expect(support).toBeNull()
+  })
+
+  it("does not honor forced symbol fallback", () => {
+    const support = detectTerminalImageSupport(
+      { TERM: "xterm-256color", WAHA_TUI_IMAGE_PROTOCOL: "symbols" },
+      hasCommands(["chafa"])
+    )
+
+    expect(support).toBeNull()
   })
 
   it("honors inline image disable even when the terminal is capable", () => {
