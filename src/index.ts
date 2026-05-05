@@ -345,14 +345,16 @@ async function main() {
   // Initial render (force rebuild)
   renderApp(true)
 
-  // Check for updates
-  try {
-    const updateInfo = await checkForUpdates()
-    if (updateInfo.updateAvailable) {
-      showUpdateModal(updateInfo)
+  if (process.env.WAHA_TUI_DISABLE_UPDATE_CHECK !== "1") {
+    // Check for updates
+    try {
+      const updateInfo = await checkForUpdates()
+      if (updateInfo.updateAvailable) {
+        showUpdateModal(updateInfo)
+      }
+    } catch (error) {
+      debugLog("Update", `Error checking for updates: ${error}`)
     }
-  } catch (error) {
-    debugLog("Update", `Error checking for updates: ${error}`)
   }
 
   // Register context menu action callback for mouse clicks (must be before keypress handler)

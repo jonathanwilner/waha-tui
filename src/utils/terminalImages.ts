@@ -86,11 +86,14 @@ function hasKnownSixelSupport(env: TerminalEnv): boolean {
 
   const term = envValue(env, "TERM")
   const termProgram = envValue(env, "TERM_PROGRAM")
+  const tmuxClient = tmuxClientTerminal(env)
 
   return Boolean(
     termProgram.includes("wezterm") ||
     termProgram.includes("mlterm") ||
     termProgram.includes("foot") ||
+    (insideTmux(env) && tmuxClient.includes("ghostty")) ||
+    tmuxClient.includes("sixel") ||
     term.includes("sixel") ||
     term.includes("mlterm") ||
     term.includes("foot") ||
@@ -121,13 +124,20 @@ export function detectTerminalImageSupport(
 
   if (forcedProtocol === "kitty") {
     if (tmuxPassthroughDisabled) return null
-    return { protocol: "kitty", passthrough, reason: "forced-kitty" }
+    const support = { protocol: "kitty", passthrough, reason: "forced-kitty" } as const
+    debugLog("TerminalImage", `Detected ${support.protocol} support: ${support.reason}`)
+    return support
   }
   if (forcedProtocol === "sixel") {
-    if (tmuxPassthroughDisabled) return null
-    return chafaAvailable()
-      ? { protocol: "sixel", passthrough, command: "chafa", reason: "forced-sixel" }
-      : null
+    if (!chafaAvailable()) return null
+    const support = {
+      protocol: "sixel",
+      passthrough: false,
+      command: "chafa",
+      reason: "forced-sixel",
+    } as const
+    debugLog("TerminalImage", `Detected ${support.protocol} support: ${support.reason}`)
+    return support
   }
   if (forcedProtocol === "symbols") {
     return null
@@ -135,14 +145,30 @@ export function detectTerminalImageSupport(
 
   if (env.WAHA_TUI_INLINE_IMAGES === "1") {
     if (tmuxPassthroughDisabled) return null
-    return { protocol: "kitty", passthrough, reason: "forced" }
+    const support = { protocol: "kitty", passthrough, reason: "forced" } as const
+    debugLog("TerminalImage", `Detected ${support.protocol} support: ${support.reason}`)
+    return support
+  }
+  if (hasKnownSixelSupport(env) && chafaAvailable()) {
+    const support = {
+      protocol: "sixel",
+      passthrough: false,
+      command: "chafa",
+      reason: "sixel-chafa",
+    } as const
+    debugLog("TerminalImage", `Detected ${support.protocol} support: ${support.reason}`)
+    return support
   }
   if (!tmuxPassthroughDisabled && hasKnownKittySupport(env)) {
-    return { protocol: "kitty", passthrough, reason: passthrough ? "tmux-kitty" : "kitty" }
+    const support = {
+      protocol: "kitty",
+      passthrough,
+      reason: passthrough ? "tmux-kitty" : "kitty",
+    } as const
+    debugLog("TerminalImage", `Detected ${support.protocol} support: ${support.reason}`)
+    return support
   }
-  if (!tmuxPassthroughDisabled && hasKnownSixelSupport(env) && chafaAvailable()) {
-    return { protocol: "sixel", passthrough, command: "chafa", reason: "sixel-chafa" }
-  }
+  debugLog("TerminalImage", "No terminal image support detected")
   return null
 }
 
@@ -292,6 +318,7 @@ export function buildChafaImageOutput(
     return null
   }
 
+  debugLog("TerminalImage", `chafa rendered image preview ${filePath} as ${protocol}`)
   chafaOutputCache.set(cacheKey, result.stdout)
   return result.stdout
 }

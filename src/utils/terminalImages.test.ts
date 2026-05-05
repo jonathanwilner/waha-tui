@@ -41,17 +41,55 @@ describe("terminalImages", () => {
     expect(support).toEqual({ protocol: "kitty", passthrough: false, reason: "kitty" })
   })
 
-  it("uses tmux passthrough for known Kitty-capable terminals", () => {
+  it("uses tmux passthrough for known Kitty-capable terminals without sixel", () => {
     const support = detectTerminalImageSupport(
       { TERM_PROGRAM: "WezTerm", TERM: "tmux-256color", TMUX: "/tmp/tmux" },
-      hasCommands(["chafa"])
+      hasCommands([])
     )
 
     expect(support?.protocol).toBe("kitty")
     expect(support?.passthrough).toBe(true)
   })
 
-  it("detects Kitty-capable tmux clients when TERM_PROGRAM is tmux", () => {
+  it("prefers sixel for tmux clients that advertise sixel support", () => {
+    const support = detectTerminalImageSupport(
+      {
+        TERM_PROGRAM: "tmux",
+        TERM: "tmux-256color",
+        TMUX: "/tmp/tmux",
+        WAHA_TUI_TMUX_CLIENT_TERM: "xterm-ghostty bpaste,RGB,sixel,title",
+      },
+      hasCommands(["chafa"])
+    )
+
+    expect(support).toEqual({
+      protocol: "sixel",
+      passthrough: false,
+      command: "chafa",
+      reason: "sixel-chafa",
+    })
+  })
+
+  it("prefers sixel for Ghostty tmux clients even when tmux omits the sixel feature", () => {
+    const support = detectTerminalImageSupport(
+      {
+        TERM_PROGRAM: "tmux",
+        TERM: "tmux-256color",
+        TMUX: "/tmp/tmux",
+        WAHA_TUI_TMUX_CLIENT_TERM: "xterm-ghostty bpaste,RGB,title",
+      },
+      hasCommands(["chafa"])
+    )
+
+    expect(support).toEqual({
+      protocol: "sixel",
+      passthrough: false,
+      command: "chafa",
+      reason: "sixel-chafa",
+    })
+  })
+
+  it("detects Kitty-capable tmux clients when sixel is not available", () => {
     const support = detectTerminalImageSupport(
       {
         TERM_PROGRAM: "tmux",
