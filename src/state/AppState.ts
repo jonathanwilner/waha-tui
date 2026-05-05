@@ -185,6 +185,8 @@ class StateManager {
       this.uiSlice.setActiveIcon("settings")
     } else if (currentView === "status") {
       this.uiSlice.setActiveIcon("status")
+    } else if (currentView === "gallery") {
+      this.uiSlice.setActiveIcon("gallery")
     } else if (currentView === "chats" || currentView === "conversation") {
       this.uiSlice.setActiveIcon("chats")
     }
@@ -371,6 +373,10 @@ class StateManager {
     this.navigationSlice.setSelectedStatusIndex(selectedStatusIndex)
   }
 
+  setSelectedGalleryIndex(selectedGalleryIndex: number): void {
+    this.navigationSlice.setSelectedGalleryIndex(selectedGalleryIndex)
+  }
+
   // Contact
   setContactsCache(contactsCache: Map<string, string>): void {
     this.contactSlice.setContactsCache(contactsCache)
@@ -552,6 +558,10 @@ class StateManager {
 
   setStatusListScrollOffset(statusListScrollOffset: number): void {
     this.navigationSlice.setStatusListScrollOffset(statusListScrollOffset)
+  }
+
+  setGalleryListScrollOffset(galleryListScrollOffset: number): void {
+    this.navigationSlice.setGalleryListScrollOffset(galleryListScrollOffset)
   }
 
   setLastChangeType(lastChangeType: ChangeType): void {

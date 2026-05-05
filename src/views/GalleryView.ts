@@ -1,59 +1,49 @@
 /**
- * Status/Photos View
- * Shows WhatsApp status@broadcast messages and previews media when available.
+ * Gallery View
+ * Browse recent WhatsApp image messages across chats.
  */
 
 import { Box, Text, TextAttributes, VChild } from "@opentui/core"
 
-import type { WAMessageExtended } from "~/types"
-import { loadMessages } from "~/client"
-import { getImagePreviewState } from "~/client/messageActions"
+import type { GalleryImageItem } from "~/utils/galleryMessages"
+import { getImagePreviewState, loadRecentGalleryMessages } from "~/client/messageActions"
 import { WhatsAppTheme } from "~/config/theme"
 import { appState } from "~/state/AppState"
 import { getRenderer } from "~/state/RendererContext"
 import { debugLog } from "~/utils/debug"
-import { formatChatTimestamp, getInitials, truncate } from "~/utils/formatters"
+import { formatChatTimestamp, truncate } from "~/utils/formatters"
+import { getGalleryImageItems } from "~/utils/galleryMessages"
 import { getMediaLabel } from "~/utils/mediaLabels"
-import {
-  getStatusMessages,
-  getStatusPreviewText,
-  getStatusSenderName,
-  STATUS_BROADCAST_CHAT_ID,
-} from "~/utils/statusMessages"
-import { supportsTerminalImages, TerminalImageRenderable } from "~/utils/terminalImages"
+import { supportsKittyImages, TerminalImageRenderable } from "~/utils/terminalImages"
 
-let statusLoadState: "idle" | "loading" | "loaded" | "error" = "idle"
+let galleryLoadState: "idle" | "loading" | "loaded" | "error" = "idle"
 
-export function resetStatusLoadRequest(): void {
-  statusLoadState = "idle"
+export function resetGalleryLoadRequest(): void {
+  galleryLoadState = "idle"
 }
 
-function requestStatusMessages(): void {
-  if (statusLoadState === "loading" || statusLoadState === "loaded") return
-  statusLoadState = "loading"
-  void loadMessages(STATUS_BROADCAST_CHAT_ID)
+export function requestGalleryRefresh(force = false): void {
+  if (galleryLoadState === "loading") return
+  if (!force && galleryLoadState === "loaded") return
+
+  galleryLoadState = "loading"
+  void loadRecentGalleryMessages({ force })
     .then(() => {
-      statusLoadState = "loaded"
+      galleryLoadState = "loaded"
     })
     .catch((error) => {
-      debugLog("StatusView", `Failed to load status messages: ${error}`)
-      statusLoadState = "error"
+      debugLog("GalleryView", `Failed to load gallery messages: ${error}`)
+      galleryLoadState = "error"
     })
     .finally(() => {
       appState.setLastChangeType("data")
     })
 }
 
-function isImageStatus(message: WAMessageExtended): boolean {
-  const type = message.type ?? message._data?.type ?? ""
-  const mimetype = message.mimetype ?? message.media?.mimetype ?? message._data?.mimetype ?? ""
-  return type === "image" || mimetype.startsWith("image/")
-}
-
-function StatusList(statuses: WAMessageExtended[]) {
+function GalleryList(items: GalleryImageItem[]) {
   const state = appState.getState()
-  const start = Math.max(0, state.statusListScrollOffset)
-  const visible = statuses.slice(start, start + 24)
+  const start = Math.max(0, state.galleryListScrollOffset)
+  const visible = items.slice(start, start + 24)
 
   return Box(
     {
@@ -70,10 +60,16 @@ function StatusList(statuses: WAMessageExtended[]) {
         border: true,
         borderColor: WhatsAppTheme.borderColor,
       },
-      Text({ content: "Status", fg: WhatsAppTheme.white, attributes: TextAttributes.BOLD }),
-      Text({ content: "Recent photos and updates", fg: WhatsAppTheme.textSecondary })
+      Text({ content: "Gallery", fg: WhatsAppTheme.white, attributes: TextAttributes.BOLD }),
+      Text({
+        content:
+          galleryLoadState === "loading"
+            ? "Scanning recent chats for images"
+            : `${items.length} image${items.length === 1 ? "" : "s"}`,
+        fg: WhatsAppTheme.textSecondary,
+      })
     ),
-    ...(statuses.length === 0
+    ...(items.length === 0
       ? [
           Box(
             {
@@ -85,21 +81,20 @@ function StatusList(statuses: WAMessageExtended[]) {
             },
             Text({
               content:
-                statusLoadState === "loading"
-                  ? "Loading status updates..."
-                  : statusLoadState === "error"
-                    ? "Could not load status updates"
-                    : "No status updates",
+                galleryLoadState === "loading"
+                  ? "Loading image gallery..."
+                  : galleryLoadState === "error"
+                    ? "Could not load image gallery"
+                    : "No images found in recent chats",
               fg: WhatsAppTheme.textSecondary,
             })
           ),
         ]
-      : visible.map((message, index) => {
+      : visible.map((item, index) => {
           const absoluteIndex = start + index
-          const selected = absoluteIndex === state.selectedStatusIndex
-          const sender = getStatusSenderName(message, state.allContacts)
-          const preview = getStatusPreviewText(message)
-          const media = getMediaLabel(message)
+          const selected = absoluteIndex === state.selectedGalleryIndex
+          const media = getMediaLabel(item.message)
+          const caption = media.caption || item.message.body || media.label || "Photo"
 
           return Box(
             {
@@ -113,7 +108,7 @@ function StatusList(statuses: WAMessageExtended[]) {
               borderColor: WhatsAppTheme.borderColor,
               onMouse(event) {
                 if (event.type === "down" && event.button === 0) {
-                  appState.setSelectedStatusIndex(absoluteIndex)
+                  appState.setSelectedGalleryIndex(absoluteIndex)
                   appState.setLastChangeType("selection")
                   event.stopPropagation()
                 }
@@ -125,11 +120,13 @@ function StatusList(statuses: WAMessageExtended[]) {
                 height: 3,
                 justifyContent: "center",
                 alignItems: "center",
-                backgroundColor: WhatsAppTheme.green,
+                backgroundColor: item.message.fromMe
+                  ? WhatsAppTheme.greenDark
+                  : WhatsAppTheme.green,
                 marginRight: 1,
               },
               Text({
-                content: getInitials(sender),
+                content: item.message.fromMe ? "Me" : "Img",
                 fg: WhatsAppTheme.white,
                 attributes: TextAttributes.BOLD,
               })
@@ -140,17 +137,17 @@ function StatusList(statuses: WAMessageExtended[]) {
                 flexGrow: 1,
               },
               Text({
-                content: truncate(sender, 24),
+                content: truncate(item.chatName, 24),
                 fg: selected ? WhatsAppTheme.white : WhatsAppTheme.textPrimary,
                 attributes: selected ? TextAttributes.BOLD : undefined,
               }),
               Text({
-                content: truncate(media.label || preview, 28),
+                content: truncate(caption.replace(/\r?\n/g, " "), 28),
                 fg: WhatsAppTheme.textSecondary,
               })
             ),
             Text({
-              content: formatChatTimestamp(message.timestamp),
+              content: formatChatTimestamp(item.message.timestamp),
               fg: WhatsAppTheme.textTertiary,
             })
           )
@@ -158,11 +155,10 @@ function StatusList(statuses: WAMessageExtended[]) {
   )
 }
 
-function StatusPreview(message: WAMessageExtended | undefined) {
+function GalleryPreview(item: GalleryImageItem | undefined) {
   const renderer = getRenderer()
-  const state = appState.getState()
 
-  if (!message) {
+  if (!item) {
     return Box(
       {
         flexDirection: "column",
@@ -171,19 +167,15 @@ function StatusPreview(message: WAMessageExtended | undefined) {
         alignItems: "center",
         backgroundColor: WhatsAppTheme.deepDark,
       },
-      Text({ content: "Select a status update", fg: WhatsAppTheme.textSecondary })
+      Text({ content: "Select an image", fg: WhatsAppTheme.textSecondary })
     )
   }
 
-  const sender = getStatusSenderName(message, state.allContacts)
-  const media = getMediaLabel(message)
-  const caption = media.caption || (media.hasMedia ? "" : message.body || "")
-  const previewState =
-    isImageStatus(message) && supportsTerminalImages()
-      ? getImagePreviewState(STATUS_BROADCAST_CHAT_ID, message, () =>
-          appState.setLastChangeType("data")
-        )
-      : { status: "idle" as const }
+  const media = getMediaLabel(item.message)
+  const caption = media.caption || item.message.body || ""
+  const previewState = supportsKittyImages()
+    ? getImagePreviewState(item.chatId, item.message, () => appState.setLastChangeType("data"))
+    : { status: "idle" as const }
 
   const content: VChild[] = [
     Box(
@@ -203,11 +195,11 @@ function StatusPreview(message: WAMessageExtended | undefined) {
           height: 3,
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: WhatsAppTheme.green,
+          backgroundColor: item.message.fromMe ? WhatsAppTheme.greenDark : WhatsAppTheme.green,
           marginRight: 2,
         },
         Text({
-          content: getInitials(sender),
+          content: item.message.fromMe ? "Sent" : "Got",
           fg: WhatsAppTheme.white,
           attributes: TextAttributes.BOLD,
         })
@@ -217,9 +209,13 @@ function StatusPreview(message: WAMessageExtended | undefined) {
           flexDirection: "column",
           flexGrow: 1,
         },
-        Text({ content: sender, fg: WhatsAppTheme.white, attributes: TextAttributes.BOLD }),
         Text({
-          content: formatChatTimestamp(message.timestamp),
+          content: truncate(item.chatName, 80),
+          fg: WhatsAppTheme.white,
+          attributes: TextAttributes.BOLD,
+        }),
+        Text({
+          content: `${formatChatTimestamp(item.message.timestamp)} - press o to open externally`,
           fg: WhatsAppTheme.textSecondary,
         })
       )
@@ -235,14 +231,22 @@ function StatusPreview(message: WAMessageExtended | undefined) {
           alignItems: "center",
           backgroundColor: WhatsAppTheme.deepDark,
         },
-        new TerminalImageRenderable(renderer, `status-${message.id}`, previewState.filePath, 42, 18)
+        new TerminalImageRenderable(
+          renderer,
+          `gallery-${item.message.id}`,
+          previewState.filePath,
+          52,
+          22
+        )
       )
     )
   } else {
     const body =
       previewState.status === "loading"
-        ? "Loading photo preview..."
-        : media.label || message.body || "Status update"
+        ? "Loading image preview..."
+        : previewState.status === "error"
+          ? "Preview unavailable; press o to open externally"
+          : media.label || "Photo"
 
     content.push(
       Box(
@@ -260,10 +264,7 @@ function StatusPreview(message: WAMessageExtended | undefined) {
           fg: WhatsAppTheme.textPrimary,
           attributes: TextAttributes.BOLD,
         }),
-        Text({
-          content: "Press o to open media externally",
-          fg: WhatsAppTheme.textSecondary,
-        })
+        Text({ content: "Press r to refresh the gallery", fg: WhatsAppTheme.textSecondary })
       )
     )
   }
@@ -280,7 +281,10 @@ function StatusPreview(message: WAMessageExtended | undefined) {
           border: true,
           borderColor: WhatsAppTheme.borderLight,
         },
-        Text({ content: truncate(caption, 120), fg: WhatsAppTheme.textPrimary })
+        Text({
+          content: truncate(caption.replace(/\r?\n/g, " "), 120),
+          fg: WhatsAppTheme.textPrimary,
+        })
       )
     )
   }
@@ -295,20 +299,20 @@ function StatusPreview(message: WAMessageExtended | undefined) {
   )
 }
 
-export function StatusView() {
-  requestStatusMessages()
+export function GalleryView() {
+  requestGalleryRefresh()
 
   const state = appState.getState()
-  const statuses = getStatusMessages(state.messages.get(STATUS_BROADCAST_CHAT_ID) || [])
-  const selectedIndex = Math.min(state.selectedStatusIndex, Math.max(0, statuses.length - 1))
-  const selected = statuses[selectedIndex]
+  const items = getGalleryImageItems(state.chats, state.messages)
+  const selectedIndex = Math.min(state.selectedGalleryIndex, Math.max(0, items.length - 1))
+  const selected = items[selectedIndex]
 
-  if (selectedIndex !== state.selectedStatusIndex) {
-    appState.setSelectedStatusIndex(selectedIndex)
+  if (selectedIndex !== state.selectedGalleryIndex) {
+    appState.setSelectedGalleryIndex(selectedIndex)
   }
 
   return {
-    leftPanel: StatusList(statuses),
-    rightPanel: StatusPreview(selected),
+    leftPanel: GalleryList(items),
+    rightPanel: GalleryPreview(selected),
   }
 }

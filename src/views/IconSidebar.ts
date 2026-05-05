@@ -17,6 +17,7 @@ export function IconSidebar() {
     { key: "chats", icon: Icons.chats, position: "top" },
     // Bottom section - like WhatsApp Web
     { key: "status", icon: "📷", position: "bottom" }, // Status/Photos
+    { key: "gallery", icon: "▣", position: "bottom" },
     { key: "settings", icon: Icons.settings, position: "bottom" },
     // { key: "profile", icon: Icons.profile, position: "bottom" },
   ]

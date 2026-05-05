@@ -7,8 +7,10 @@ export interface NavigationState {
   selectedSessionIndex: number
   selectedChatIndex: number
   selectedStatusIndex: number
+  selectedGalleryIndex: number
   chatListScrollOffset: number
   statusListScrollOffset: number
+  galleryListScrollOffset: number
   lastChangeType: ChangeType
 }
 
@@ -16,8 +18,10 @@ export const initialNavigationState: NavigationState = {
   selectedSessionIndex: 0,
   selectedChatIndex: 0,
   selectedStatusIndex: 0,
+  selectedGalleryIndex: 0,
   chatListScrollOffset: 0,
   statusListScrollOffset: 0,
+  galleryListScrollOffset: 0,
   lastChangeType: "other",
 }
 
@@ -25,8 +29,10 @@ export interface NavigationActions extends SliceActions<NavigationState> {
   setSelectedSessionIndex(selectedSessionIndex: number): void
   setSelectedChatIndex(selectedChatIndex: number): void
   setSelectedStatusIndex(selectedStatusIndex: number): void
+  setSelectedGalleryIndex(selectedGalleryIndex: number): void
   setChatListScrollOffset(chatListScrollOffset: number): void
   setStatusListScrollOffset(statusListScrollOffset: number): void
+  setGalleryListScrollOffset(galleryListScrollOffset: number): void
 }
 
 export function createNavigationSlice(): StateSlice<NavigationState> & NavigationActions {
@@ -76,6 +82,11 @@ export function createNavigationSlice(): StateSlice<NavigationState> & Navigatio
       notify()
     },
 
+    setSelectedGalleryIndex(selectedGalleryIndex: number) {
+      state = { ...state, selectedGalleryIndex }
+      notify()
+    },
+
     setChatListScrollOffset(chatListScrollOffset: number) {
       state = { ...state, chatListScrollOffset }
       notify()
@@ -83,6 +94,11 @@ export function createNavigationSlice(): StateSlice<NavigationState> & Navigatio
 
     setStatusListScrollOffset(statusListScrollOffset: number) {
       state = { ...state, statusListScrollOffset }
+      notify()
+    },
+
+    setGalleryListScrollOffset(galleryListScrollOffset: number) {
+      state = { ...state, galleryListScrollOffset }
       notify()
     },
   }

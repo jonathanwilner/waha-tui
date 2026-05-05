@@ -36,6 +36,7 @@ export function Footer() {
       { key: "Tab", label: "Sidebar" },
       { key: ["f", "Shift+F"], label: "Filter" },
       { key: ["Ctrl + A", "Meta + A"], label: "Toggle Archived" },
+      { key: ["g", "4"], label: "Gallery" },
       { key: "s", label: "Settings" },
       { key: "Esc", label: "Back" },
       { key: "1", label: "Sessions" }
@@ -66,6 +67,15 @@ export function Footer() {
       { key: "Tab", label: "Sidebar" },
       { key: "Esc", label: "Back to Chats" },
       { key: "1", label: "Sessions" }
+    )
+  } else if (state.currentView === "gallery") {
+    hints.push(
+      { key: "↑↓", label: "Navigate" },
+      { key: "Enter", label: "Open Image" },
+      { key: "o", label: "Open Image" },
+      { key: "r", label: "Refresh" },
+      { key: "Tab", label: "Sidebar" },
+      { key: "Esc", label: "Back to Chats" }
     )
   } else if (state.currentView === "settings") {
     hints.push(

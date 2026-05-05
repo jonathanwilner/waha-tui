@@ -89,6 +89,11 @@ describe("AppState", () => {
       expect(appState.getState().activeIcon).toBe("chats")
     })
 
+    it("should update activeIcon when switching to gallery", () => {
+      appState.setCurrentView("gallery")
+      expect(appState.getState().activeIcon).toBe("gallery")
+    })
+
     it("should clear sidebar focus when switching views", () => {
       appState.setSidebarFocused(true)
       expect(appState.getState().sidebarFocused).toBe(true)

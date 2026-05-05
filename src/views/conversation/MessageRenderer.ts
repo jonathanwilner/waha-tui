@@ -14,7 +14,7 @@ import { appState } from "~/state/AppState"
 import { debugLog } from "~/utils/debug"
 import { formatAckStatus, getInitials, isSelfChat } from "~/utils/formatters"
 import { getMediaLabel } from "~/utils/mediaLabels"
-import { supportsKittyImages, TerminalImageRenderable } from "~/utils/terminalImages"
+import { supportsTerminalImages, TerminalImageRenderable } from "~/utils/terminalImages"
 import { centerText, getSenderInfo } from "~/views/conversation/MessageHelpers"
 import { renderReplyContext } from "~/views/conversation/ReplyContext"
 
@@ -87,7 +87,7 @@ function renderInlineImagePreview(
   chatId: string | undefined,
   message: WAMessageExtended
 ): BoxRenderable | null {
-  if (!chatId || !message.id || !isImageMedia(message) || !supportsKittyImages()) return null
+  if (!chatId || !message.id || !isImageMedia(message) || !supportsTerminalImages()) return null
 
   const previewWidth = Math.max(18, Math.min(36, Math.floor(renderer.width * 0.28)))
   const previewHeight = Math.max(8, Math.min(14, Math.floor(previewWidth * 0.45)))

@@ -1,0 +1,149 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
+import { describe, expect, it } from "bun:test"
+
+import {
+  buildChafaImageCommandArgs,
+  buildKittyFileImageCommand,
+  detectKittyImageSupport,
+  detectTerminalImageSupport,
+  tmuxPassthrough,
+  wrapKittyGraphics,
+} from "~/utils/terminalImages"
+
+function hasCommands(commands: string[]): (command: string) => boolean {
+  return (command: string) => commands.includes(command)
+}
+
+function withTempImage(assertions: (filePath: string) => void): void {
+  const dir = mkdtempSync(join(tmpdir(), "waha-tui-terminal-images-"))
+  const filePath = join(dir, "photo.png")
+  writeFileSync(filePath, "not-a-real-image")
+
+  try {
+    assertions(filePath)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+describe("terminalImages", () => {
+  it("selects Kitty graphics for Ghostty without requiring chafa", () => {
+    const support = detectTerminalImageSupport(
+      { TERM_PROGRAM: "ghostty", TERM: "xterm-256color" },
+      hasCommands([])
+    )
+
+    expect(support).toEqual({ protocol: "kitty", passthrough: false, reason: "kitty" })
+  })
+
+  it("uses tmux passthrough for known Kitty-capable terminals", () => {
+    const support = detectTerminalImageSupport(
+      { TERM_PROGRAM: "WezTerm", TERM: "tmux-256color", TMUX: "/tmp/tmux" },
+      hasCommands(["chafa"])
+    )
+
+    expect(support?.protocol).toBe("kitty")
+    expect(support?.passthrough).toBe(true)
+  })
+
+  it("does not assume tmux alone means inline image support", () => {
+    const support = detectTerminalImageSupport(
+      { TERM: "tmux-256color", TMUX: "/tmp/tmux" },
+      hasCommands([])
+    )
+
+    expect(support).toBeNull()
+  })
+
+  it("does not emit Kitty graphics through tmux when passthrough is disabled", () => {
+    const support = detectKittyImageSupport({
+      TERM: "xterm-kitty",
+      TMUX: "/tmp/tmux",
+      WAHA_TUI_TMUX_PASSTHROUGH: "0",
+    })
+
+    expect(support).toEqual({
+      supported: false,
+      passthrough: false,
+      reason: "tmux-passthrough-disabled",
+    })
+  })
+
+  it("selects sixel through chafa for sixel-capable terminals", () => {
+    const support = detectTerminalImageSupport(
+      { TERM: "xterm-sixel", TERM_PROGRAM: "foot" },
+      hasCommands(["chafa"])
+    )
+
+    expect(support).toEqual({
+      protocol: "sixel",
+      passthrough: false,
+      command: "chafa",
+      reason: "sixel-chafa",
+    })
+  })
+
+  it("falls back to chafa symbols on terminals without native image protocols", () => {
+    const support = detectTerminalImageSupport(
+      { TERM: "xterm-256color", TERM_PROGRAM: "Alacritty" },
+      hasCommands(["chafa"])
+    )
+
+    expect(support).toEqual({
+      protocol: "symbols",
+      passthrough: false,
+      command: "chafa",
+      reason: "symbols-chafa",
+    })
+  })
+
+  it("honors inline image disable even when the terminal is capable", () => {
+    const support = detectTerminalImageSupport(
+      { WAHA_TUI_INLINE_IMAGES: "0", TERM_PROGRAM: "ghostty" },
+      hasCommands(["chafa"])
+    )
+
+    expect(support).toBeNull()
+  })
+
+  it("builds chafa command args with the selected terminal format", () => {
+    withTempImage((filePath) => {
+      expect(buildChafaImageCommandArgs(filePath, 42.8, 18.2, "sixel")).toEqual([
+        "--format=sixels",
+        "--size=42x18",
+        filePath,
+      ])
+      expect(buildChafaImageCommandArgs(filePath, 30, 10, "symbols")).toEqual([
+        "--format=symbols",
+        "--size=30x10",
+        filePath,
+      ])
+    })
+  })
+
+  it("keeps Kitty file-transfer commands path-based instead of embedding image bytes", () => {
+    withTempImage((filePath) => {
+      const command = buildKittyFileImageCommand(filePath, 12, 5)
+
+      const payload = Buffer.from(filePath, "utf8").toString("base64")
+      expect(command).toBe(`\x1b_Ga=T,t=f,c=12,r=5;${payload}\x1b\\`)
+    })
+  })
+
+  it("does not emit Kitty commands for fallback paths", () => {
+    expect(buildKittyFileImageCommand("relative.png", 10, 5)).toBeNull()
+    expect(buildKittyFileImageCommand("/tmp/waha-tui-missing-preview.png", 10, 5)).toBeNull()
+  })
+
+  it("escapes nested control sequences for tmux passthrough", () => {
+    const command = "\x1b_Gtest\x1b\\"
+    const wrapped = "\x1bPtmux;\x1b\x1b_Gtest\x1b\x1b\\\x1b\\"
+
+    expect(tmuxPassthrough(command)).toBe(wrapped)
+    expect(wrapKittyGraphics(command, { TERM: "xterm-kitty" })).toBe(command)
+    expect(wrapKittyGraphics(command, { TERM: "xterm-kitty", TMUX: "/tmp/tmux" })).toBe(wrapped)
+  })
+})

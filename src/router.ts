@@ -49,6 +49,7 @@ const VIEW_COMPONENTS: Record<ViewType, () => unknown> = {
   chats: MainLayout,
   conversation: MainLayout,
   status: MainLayout,
+  gallery: MainLayout,
   settings: SettingsView,
 }
 

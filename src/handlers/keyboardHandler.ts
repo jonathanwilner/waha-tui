@@ -39,6 +39,7 @@ import { startNewChat } from "~/utils/createChat"
 import { debugLog } from "~/utils/debug"
 import { filterChats, isArchived } from "~/utils/filterChats"
 import { getChatIdString } from "~/utils/formatters"
+import { getGalleryImageItems } from "~/utils/galleryMessages"
 import { getStatusMessages, STATUS_BROADCAST_CHAT_ID } from "~/utils/statusMessages"
 import { chatListManager } from "~/views/ChatListManager"
 import { blurSearchInput, clearSearchInput, focusSearchInput } from "~/views/ChatsView"
@@ -48,6 +49,7 @@ import {
   focusMessageInput,
   scrollConversation,
 } from "~/views/ConversationView"
+import { requestGalleryRefresh, resetGalleryLoadRequest } from "~/views/GalleryView"
 import {
   handlePhoneBackspace,
   handlePhoneInput,
@@ -75,7 +77,7 @@ function getCurrentFilteredChats(state: AppState): ChatSummary[] {
   return filterChats(state.chats, state.activeFilter, state.searchQuery)
 }
 
-const sidebarIcons: ActiveIcon[] = ["chats", "status", "settings"]
+const sidebarIcons: ActiveIcon[] = ["chats", "status", "gallery", "settings"]
 
 function isTabKey(key: KeyEvent): boolean {
   return key.name === "tab"
@@ -133,6 +135,17 @@ async function activateSidebarIcon(icon: ActiveIcon, state: AppState): Promise<v
     return
   }
 
+  if (icon === "gallery" && state.currentSession) {
+    stopPresenceManagement()
+    appState.setCurrentChat(null)
+    appState.setCurrentView("gallery")
+    appState.setSelectedGalleryIndex(0)
+    appState.setGalleryListScrollOffset(0)
+    resetGalleryLoadRequest()
+    requestGalleryRefresh(true)
+    return
+  }
+
   if (icon === "chats" && state.currentSession) {
     stopPresenceManagement()
     appState.setCurrentView("chats")
@@ -148,6 +161,7 @@ async function handleSidebarKeys(key: KeyEvent, state: AppState): Promise<boolea
     state.currentView !== "chats" &&
     state.currentView !== "conversation" &&
     state.currentView !== "status" &&
+    state.currentView !== "gallery" &&
     state.currentView !== "settings"
   ) {
     return false
@@ -294,6 +308,88 @@ async function handleStatusViewKeys(key: KeyEvent, state: AppState): Promise<boo
   if (key.name === "r" && state.currentSession) {
     resetStatusLoadRequest()
     await loadMessages(STATUS_BROADCAST_CHAT_ID)
+    return true
+  }
+
+  if (isEscapeKey(key)) {
+    appState.setCurrentView("chats")
+    appState.setCurrentChat(null)
+    return true
+  }
+
+  return false
+}
+
+async function handleGalleryViewKeys(key: KeyEvent, state: AppState): Promise<boolean> {
+  if (state.currentView !== "gallery") return false
+
+  const items = getGalleryImageItems(state.chats, state.messages)
+
+  if ((key.name === "up" || key.name === "k") && items.length > 0) {
+    const newIndex = Math.max(0, state.selectedGalleryIndex - 1)
+    appState.setSelectedGalleryIndex(newIndex)
+    appState.setGalleryListScrollOffset(
+      calculateChatListScrollOffset(newIndex, state.galleryListScrollOffset, items.length)
+    )
+    return true
+  }
+
+  if ((key.name === "down" || key.name === "j") && items.length > 0) {
+    const newIndex = Math.min(items.length - 1, state.selectedGalleryIndex + 1)
+    appState.setSelectedGalleryIndex(newIndex)
+    appState.setGalleryListScrollOffset(
+      calculateChatListScrollOffset(newIndex, state.galleryListScrollOffset, items.length)
+    )
+    return true
+  }
+
+  if (key.name === "home" && items.length > 0) {
+    appState.setSelectedGalleryIndex(0)
+    appState.setGalleryListScrollOffset(0)
+    return true
+  }
+
+  if (key.name === "end" && items.length > 0) {
+    const lastIndex = items.length - 1
+    appState.setSelectedGalleryIndex(lastIndex)
+    appState.setGalleryListScrollOffset(
+      calculateChatListScrollOffset(lastIndex, state.galleryListScrollOffset, items.length)
+    )
+    return true
+  }
+
+  if ((key.name === "pagedown" || key.name === "right") && items.length > 0) {
+    const newIndex = Math.min(items.length - 1, state.selectedGalleryIndex + 12)
+    appState.setSelectedGalleryIndex(newIndex)
+    appState.setGalleryListScrollOffset(
+      calculateChatListScrollOffset(newIndex, state.galleryListScrollOffset, items.length)
+    )
+    return true
+  }
+
+  if ((key.name === "pageup" || key.name === "left") && items.length > 0) {
+    const newIndex = Math.max(0, state.selectedGalleryIndex - 12)
+    appState.setSelectedGalleryIndex(newIndex)
+    appState.setGalleryListScrollOffset(
+      calculateChatListScrollOffset(newIndex, state.galleryListScrollOffset, items.length)
+    )
+    return true
+  }
+
+  if ((key.name === "o" || key.name === "return" || key.name === "enter") && items.length > 0) {
+    const selected = items[state.selectedGalleryIndex]
+    if (selected?.message.id) {
+      downloadAndOpenMedia(selected.chatId, selected.message.id).catch((err) => {
+        debugLog("Keyboard", `Failed to open gallery media: ${err}`)
+        showToast("Failed to open gallery image", "error")
+      })
+    }
+    return true
+  }
+
+  if (key.name === "r" && state.currentSession) {
+    resetGalleryLoadRequest()
+    requestGalleryRefresh(true)
     return true
   }
 
@@ -991,6 +1087,19 @@ async function handleGlobalKeys(key: KeyEvent, state: AppState): Promise<boolean
     return true
   }
 
+  if ((key.name === "4" || key.name === "g") && !state.inputMode) {
+    if (state.currentSession) {
+      stopPresenceManagement()
+      appState.setCurrentView("gallery")
+      appState.setCurrentChat(null)
+      appState.setSelectedGalleryIndex(0)
+      appState.setGalleryListScrollOffset(0)
+      resetGalleryLoadRequest()
+      requestGalleryRefresh(true)
+    }
+    return true
+  }
+
   return false
 }
 
@@ -1020,6 +1129,7 @@ export async function handleKeyPress(key: KeyEvent, context: KeyHandlerContext):
   if (await handleChatsViewKeys(key, state)) return
   if (await handleConversationViewKeys(key, state)) return
   if (await handleStatusViewKeys(key, state)) return
+  if (await handleGalleryViewKeys(key, state)) return
   if (await handleSettingsViewKeys(key, state)) return
 
   // Global handlers

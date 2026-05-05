@@ -379,6 +379,34 @@ export async function loadMessages(chatId: string): Promise<void> {
   }
 }
 
+export async function loadRecentGalleryMessages(
+  options: {
+    chatLimit?: number
+    force?: boolean
+  } = {}
+): Promise<void> {
+  const { chatLimit = 30, force = false } = options
+  let state = appState.getState()
+
+  if (state.chats.length === 0) {
+    await loadChats()
+    state = appState.getState()
+  }
+
+  const recentChats = state.chats.slice(0, chatLimit)
+  debugLog("Gallery", `Refreshing gallery messages from ${recentChats.length} chats`)
+
+  for (const chat of recentChats) {
+    const chatId = getChatIdString(chat.id)
+    if (!chatId) continue
+
+    const cachedMessages = appState.getState().messages.get(chatId)
+    if (!force && cachedMessages && cachedMessages.length > 0) continue
+
+    await loadMessages(chatId)
+  }
+}
+
 let isLoadingMore = false
 
 export async function loadOlderMessages(): Promise<void> {

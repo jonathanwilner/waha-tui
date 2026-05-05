@@ -14,6 +14,7 @@ import { WhatsAppTheme } from "~/config/theme"
 import { appState } from "~/state/AppState"
 import { ChatsView } from "~/views/ChatsView"
 import { ConversationView } from "~/views/ConversationView"
+import { GalleryView } from "~/views/GalleryView"
 import { IconSidebar } from "~/views/IconSidebar"
 import { StatusView } from "~/views/StatusView"
 import { WelcomeView } from "~/views/WelcomeView"
@@ -80,6 +81,10 @@ export function MainLayout() {
 
   if (state.currentView === "status") {
     return ThreePanelLayout(StatusView())
+  }
+
+  if (state.currentView === "gallery") {
+    return ThreePanelLayout(GalleryView())
   }
 
   // Determine what to show in the right panel

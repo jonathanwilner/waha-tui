@@ -6,12 +6,20 @@ export type ViewType =
   | "chats"
   | "conversation"
   | "status"
+  | "gallery"
   | "settings"
   | "qr"
   | "loading"
 
 export type ActiveFilter = "all" | "unread" | "favorites" | "groups"
-export type ActiveIcon = "chats" | "status" | "profile" | "settings" | "channels" | "communities"
+export type ActiveIcon =
+  | "chats"
+  | "status"
+  | "gallery"
+  | "profile"
+  | "settings"
+  | "channels"
+  | "communities"
 
 export interface UIState {
   currentView: ViewType

@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import { existsSync } from "node:fs"
+import { isAbsolute } from "node:path"
 
 import { BoxRenderable, CliRenderer } from "@opentui/core"
 
@@ -13,45 +15,167 @@ interface ImagePlacement {
   height: number
 }
 
+export type TerminalImageProtocol = "kitty" | "sixel" | "symbols"
+
+export interface TerminalImageSupport {
+  protocol: TerminalImageProtocol
+  passthrough: boolean
+  command?: "chafa"
+  reason: string
+}
+
+type TerminalEnv = NodeJS.ProcessEnv
+
 const placements = new Map<string, ImagePlacement>()
 let frameRegistered = false
 let wroteImages = false
 let lastSignature = ""
 let lastWriteAt = 0
+let cachedSupport: TerminalImageSupport | null | undefined
+const chafaOutputCache = new Map<string, string | null>()
 
-function envValue(name: string): string {
-  return (process.env[name] || "").toLowerCase()
+function envValue(env: TerminalEnv, name: string): string {
+  return (env[name] || "").toLowerCase()
 }
 
-function insideTmux(): boolean {
-  return !!process.env.TMUX
+function insideTmux(env: TerminalEnv): boolean {
+  return !!env.TMUX
 }
 
-export function supportsKittyImages(): boolean {
-  if (process.env.WAHA_TUI_INLINE_IMAGES === "0") return false
-  if (process.env.WAHA_TUI_INLINE_IMAGES === "1") return true
+function hasKnownKittySupport(env: TerminalEnv): boolean {
+  const term = envValue(env, "TERM")
+  const termProgram = envValue(env, "TERM_PROGRAM")
 
-  const term = envValue("TERM")
-  const termProgram = envValue("TERM_PROGRAM")
-
-  return (
+  return Boolean(
     termProgram.includes("ghostty") ||
     termProgram.includes("wezterm") ||
-    !!process.env.KITTY_WINDOW_ID ||
-    !!process.env.WEZTERM_PANE ||
-    insideTmux() ||
+    !!env.KITTY_WINDOW_ID ||
+    !!env.WEZTERM_PANE ||
     term.includes("kitty") ||
     term.includes("ghostty") ||
     term.includes("wezterm")
   )
 }
 
-function tmuxPassthrough(data: string): string {
+function hasKnownSixelSupport(env: TerminalEnv): boolean {
+  if (env.WAHA_TUI_SIXEL === "1") return true
+
+  const term = envValue(env, "TERM")
+  const termProgram = envValue(env, "TERM_PROGRAM")
+
+  return Boolean(
+    termProgram.includes("wezterm") ||
+    termProgram.includes("mlterm") ||
+    termProgram.includes("foot") ||
+    term.includes("sixel") ||
+    term.includes("mlterm") ||
+    term.includes("foot") ||
+    term.includes("contour")
+  )
+}
+
+function commandExists(command: string): boolean {
+  const result = spawnSync("sh", ["-lc", `command -v ${command}`], {
+    stdio: "ignore",
+  })
+  return result.status === 0
+}
+
+export function detectTerminalImageSupport(
+  env: TerminalEnv = process.env,
+  hasCommand: (command: string) => boolean = commandExists
+): TerminalImageSupport | null {
+  if (env.WAHA_TUI_INLINE_IMAGES === "0") {
+    return null
+  }
+
+  const tmux = insideTmux(env)
+  const tmuxPassthroughDisabled = tmux && env.WAHA_TUI_TMUX_PASSTHROUGH === "0"
+  const passthrough = tmux && !tmuxPassthroughDisabled
+  const forcedProtocol = env.WAHA_TUI_IMAGE_PROTOCOL?.toLowerCase()
+  const chafaAvailable = (): boolean => hasCommand("chafa")
+
+  if (forcedProtocol === "kitty") {
+    if (tmuxPassthroughDisabled) return null
+    return { protocol: "kitty", passthrough, reason: "forced-kitty" }
+  }
+  if (forcedProtocol === "sixel") {
+    if (tmuxPassthroughDisabled) return null
+    return chafaAvailable()
+      ? { protocol: "sixel", passthrough, command: "chafa", reason: "forced-sixel" }
+      : null
+  }
+  if (forcedProtocol === "symbols") {
+    return chafaAvailable()
+      ? { protocol: "symbols", passthrough: false, command: "chafa", reason: "forced-symbols" }
+      : null
+  }
+
+  if (env.WAHA_TUI_INLINE_IMAGES === "1") {
+    if (tmuxPassthroughDisabled) return null
+    return { protocol: "kitty", passthrough, reason: "forced" }
+  }
+  if (!tmuxPassthroughDisabled && hasKnownKittySupport(env)) {
+    return { protocol: "kitty", passthrough, reason: passthrough ? "tmux-kitty" : "kitty" }
+  }
+  if (!tmuxPassthroughDisabled && hasKnownSixelSupport(env) && chafaAvailable()) {
+    return { protocol: "sixel", passthrough, command: "chafa", reason: "sixel-chafa" }
+  }
+  if (chafaAvailable()) {
+    return { protocol: "symbols", passthrough: false, command: "chafa", reason: "symbols-chafa" }
+  }
+
+  return null
+}
+
+export function detectKittyImageSupport(env: TerminalEnv = process.env): {
+  supported: boolean
+  passthrough: boolean
+  reason: string
+} {
+  const support = detectTerminalImageSupport(env)
+  if (env.WAHA_TUI_INLINE_IMAGES === "0") {
+    return { supported: false, passthrough: false, reason: "disabled" }
+  }
+  if (insideTmux(env) && env.WAHA_TUI_TMUX_PASSTHROUGH === "0") {
+    return { supported: false, passthrough: false, reason: "tmux-passthrough-disabled" }
+  }
+  return {
+    supported: support?.protocol === "kitty",
+    passthrough: support?.protocol === "kitty" ? support.passthrough : false,
+    reason: support?.protocol === "kitty" ? support.reason : "unsupported-terminal",
+  }
+}
+
+export function getTerminalImageSupport(): TerminalImageSupport | null {
+  if (cachedSupport === undefined) {
+    cachedSupport = detectTerminalImageSupport()
+  }
+  return cachedSupport
+}
+
+export function resetTerminalImageSupportCache(): void {
+  cachedSupport = undefined
+}
+
+export function supportsKittyImages(env: TerminalEnv = process.env): boolean {
+  return detectKittyImageSupport(env).supported
+}
+
+export function supportsTerminalImages(): boolean {
+  return getTerminalImageSupport() !== null
+}
+
+export function tmuxPassthrough(data: string): string {
   return `\x1bPtmux;${data.replaceAll("\x1b", "\x1b\x1b")}\x1b\\`
 }
 
-function kittyGraphics(data: string): string {
-  return insideTmux() ? tmuxPassthrough(data) : data
+export function wrapKittyGraphics(data: string, env: TerminalEnv = process.env): string {
+  return detectKittyImageSupport(env).passthrough ? tmuxPassthrough(data) : data
+}
+
+function wrapTerminalGraphics(data: string, support: TerminalImageSupport): string {
+  return support.passthrough ? tmuxPassthrough(data) : data
 }
 
 function writeRaw(renderer: CliRenderer, data: string): void {
@@ -63,18 +187,100 @@ function writeRaw(renderer: CliRenderer, data: string): void {
   process.stdout.write(data)
 }
 
-function encodeKittyImage(filePath: string, width: number, height: number): string | null {
-  try {
-    const payload = readFileSync(filePath).toString("base64")
-    return `\x1b_Ga=T,f=100,t=d,c=${width},r=${height};${payload}\x1b\\`
-  } catch (error) {
-    debugLog("TerminalImage", `Failed to read image preview ${filePath}: ${error}`)
+export function buildKittyFileImageCommand(
+  filePath: string,
+  width: number,
+  height: number
+): string | null {
+  if (!isAbsolute(filePath)) {
+    debugLog("TerminalImage", `Skipping non-absolute image preview path: ${filePath}`)
     return null
   }
+
+  if (!existsSync(filePath)) {
+    debugLog("TerminalImage", `Skipping missing image preview path: ${filePath}`)
+    return null
+  }
+
+  const columns = Math.max(1, Math.floor(width))
+  const rows = Math.max(1, Math.floor(height))
+  const payload = Buffer.from(filePath, "utf8").toString("base64")
+  return `\x1b_Ga=T,t=f,c=${columns},r=${rows};${payload}\x1b\\`
+}
+
+export function buildChafaImageCommandArgs(
+  filePath: string,
+  width: number,
+  height: number,
+  protocol: Extract<TerminalImageProtocol, "sixel" | "symbols">
+): string[] | null {
+  if (!isAbsolute(filePath)) {
+    debugLog("TerminalImage", `Skipping non-absolute image preview path: ${filePath}`)
+    return null
+  }
+
+  if (!existsSync(filePath)) {
+    debugLog("TerminalImage", `Skipping missing image preview path: ${filePath}`)
+    return null
+  }
+
+  const columns = Math.max(1, Math.floor(width))
+  const rows = Math.max(1, Math.floor(height))
+  const format = protocol === "sixel" ? "sixels" : "symbols"
+  return [`--format=${format}`, `--size=${columns}x${rows}`, filePath]
+}
+
+function buildChafaImageOutput(
+  filePath: string,
+  width: number,
+  height: number,
+  protocol: Extract<TerminalImageProtocol, "sixel" | "symbols">
+): string | null {
+  const cacheKey = `${protocol}:${filePath}:${Math.max(1, Math.floor(width))}x${Math.max(1, Math.floor(height))}`
+  if (chafaOutputCache.has(cacheKey)) {
+    return chafaOutputCache.get(cacheKey) ?? null
+  }
+
+  const args = buildChafaImageCommandArgs(filePath, width, height, protocol)
+  if (!args) {
+    chafaOutputCache.set(cacheKey, null)
+    return null
+  }
+
+  const result = spawnSync("chafa", args, {
+    encoding: "utf8",
+    maxBuffer: 4 * 1024 * 1024,
+  })
+
+  if (result.status !== 0) {
+    debugLog("TerminalImage", `chafa failed for image preview ${filePath}: ${result.stderr}`)
+    chafaOutputCache.set(cacheKey, null)
+    return null
+  }
+
+  chafaOutputCache.set(cacheKey, result.stdout)
+  return result.stdout
+}
+
+function buildTerminalImageOutput(
+  placement: ImagePlacement,
+  support: TerminalImageSupport
+): string | null {
+  if (support.protocol === "kitty") {
+    return buildKittyFileImageCommand(placement.filePath, placement.width, placement.height)
+  }
+
+  return buildChafaImageOutput(
+    placement.filePath,
+    placement.width,
+    placement.height,
+    support.protocol
+  )
 }
 
 function flushKittyImages(renderer: CliRenderer): void {
-  if (!supportsKittyImages()) return
+  const support = getTerminalImageSupport()
+  if (!support) return
 
   const ordered = [...placements.values()].sort((a, b) => a.y - b.y || a.x - b.x)
   const signature = ordered
@@ -89,17 +295,23 @@ function flushKittyImages(renderer: CliRenderer): void {
 
   if (ordered.length === 0) {
     if (wroteImages) {
-      writeRaw(renderer, kittyGraphics("\x1b_Ga=d,d=A\x1b\\"))
+      if (support.protocol === "kitty") {
+        writeRaw(renderer, wrapTerminalGraphics("\x1b_Ga=d,d=A\x1b\\", support))
+      }
       wroteImages = false
     }
     return
   }
 
-  const chunks = ["\x1b7", kittyGraphics("\x1b_Ga=d,d=A\x1b\\")]
+  const chunks = ["\x1b7"]
+  if (support.protocol === "kitty") {
+    chunks.push(wrapTerminalGraphics("\x1b_Ga=d,d=A\x1b\\", support))
+  }
+
   for (const placement of ordered) {
-    const image = encodeKittyImage(placement.filePath, placement.width, placement.height)
+    const image = buildTerminalImageOutput(placement, support)
     if (!image) continue
-    chunks.push(`\x1b[${placement.y + 1};${placement.x + 1}H`, kittyGraphics(image))
+    chunks.push(`\x1b[${placement.y + 1};${placement.x + 1}H`, wrapTerminalGraphics(image, support))
   }
   chunks.push("\x1b8")
 
@@ -141,7 +353,7 @@ export class TerminalImageRenderable extends BoxRenderable {
   render(buffer: Parameters<BoxRenderable["render"]>[0], deltaTime: number): void {
     super.render(buffer, deltaTime)
 
-    if (!supportsKittyImages()) return
+    if (!supportsTerminalImages()) return
     if (this.width <= 0 || this.height <= 0) return
 
     placements.set(this.imageId, {
