@@ -213,9 +213,10 @@ class ErrorService {
 
     // Log to debug output
     if (log) {
+      const stack = appError.cause?.stack ? `\n${appError.cause.stack}` : ""
       debugLog(
         "Error",
-        `[${appError.code}] ${appError.message}${appError.cause ? ` - Cause: ${appError.cause.message}` : ""}`
+        `[${appError.code}] ${appError.message}${appError.cause ? ` - Cause: ${appError.cause.message}` : ""}${stack}`
       )
     }
 

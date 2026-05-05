@@ -216,8 +216,7 @@ async function main() {
       notify: true,
       context: { type: "uncaughtException" },
     })
-    cleanup()
-    process.exit(1)
+    debugLog("Error", "Continuing after uncaught exception")
   })
   process.on("unhandledRejection", (reason) => {
     errorService.handle(reason, {
@@ -225,8 +224,7 @@ async function main() {
       notify: true,
       context: { type: "unhandledRejection" },
     })
-    cleanup()
-    process.exit(1)
+    debugLog("Error", "Continuing after unhandled rejection")
   })
 
   let config: WahaTuiConfig | null = null

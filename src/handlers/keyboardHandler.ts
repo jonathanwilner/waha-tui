@@ -81,6 +81,12 @@ function isTabKey(key: KeyEvent): boolean {
   return key.name === "tab"
 }
 
+function isEscapeKey(key: KeyEvent): boolean {
+  return (
+    key.name === "escape" || (key.name === "" && (key.raw === "\x1b" || key.sequence === "\x1b"))
+  )
+}
+
 function blurActiveInput(state: AppState): void {
   if (!state.inputMode) return
 
@@ -182,7 +188,7 @@ async function handleSidebarKeys(key: KeyEvent, state: AppState): Promise<boolea
     return true
   }
 
-  if (key.name === "escape" || key.name === "right") {
+  if (isEscapeKey(key) || key.name === "right") {
     appState.setSidebarFocused(false)
     return true
   }
@@ -293,7 +299,7 @@ async function handleStatusViewKeys(key: KeyEvent, state: AppState): Promise<boo
     return true
   }
 
-  if (key.name === "escape") {
+  if (isEscapeKey(key)) {
     appState.setCurrentView("chats")
     appState.setCurrentChat(null)
     return true
@@ -340,7 +346,7 @@ async function handleQRViewKeys(key: KeyEvent, state: AppState): Promise<boolean
       await submitPhoneNumber()
       return true
     }
-    if (key.name === "escape") {
+    if (isEscapeKey(key)) {
       toggleAuthMode()
       return true
     }
@@ -608,7 +614,7 @@ async function handleChatsViewKeys(key: KeyEvent, state: AppState): Promise<bool
   }
 
   // Escape key
-  if (key.name === "escape") {
+  if (isEscapeKey(key)) {
     if (state.inputMode) {
       blurSearchInput()
     } else if (state.showingArchivedChats) {
@@ -760,7 +766,7 @@ async function handleConversationViewKeys(key: KeyEvent, state: AppState): Promi
   }
 
   // Escape key
-  if (key.name === "escape") {
+  if (isEscapeKey(key)) {
     if (state.inputMode) {
       blurMessageInput()
     } else {
@@ -852,7 +858,7 @@ async function handleSettingsViewKeys(key: KeyEvent, state: AppState): Promise<b
   }
 
   // Escape key - navigation
-  if (key.name === "escape") {
+  if (isEscapeKey(key)) {
     if (state.settingsPage === "main") {
       appState.setCurrentView("chats")
     } else if (
