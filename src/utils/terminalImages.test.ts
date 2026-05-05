@@ -6,9 +6,11 @@ import { describe, expect, it } from "bun:test"
 
 import {
   buildChafaImageCommandArgs,
+  buildChafaImageOutput,
   buildKittyFileImageCommand,
   detectKittyImageSupport,
   detectTerminalImageSupport,
+  resetTerminalImageOutputCache,
   tmuxPassthrough,
   wrapKittyGraphics,
 } from "~/utils/terminalImages"
@@ -134,12 +136,40 @@ describe("terminalImages", () => {
         "--size=42x18",
         filePath,
       ])
-      expect(buildChafaImageCommandArgs(filePath, 30, 10, "symbols")).toEqual([
-        "--format=symbols",
-        "--size=30x10",
-        filePath,
-      ])
     })
+  })
+
+  it("does not build chafa symbol fallback output that could spill text into layout", () => {
+    withTempImage((filePath) => {
+      expect(buildChafaImageCommandArgs(filePath, 30, 10, "symbols")).toBeNull()
+    })
+  })
+
+  it("does not emit chafa commands for fallback paths", () => {
+    expect(buildChafaImageCommandArgs("relative.png", 10, 5, "sixel")).toBeNull()
+    expect(
+      buildChafaImageCommandArgs("/tmp/waha-tui-missing-preview.png", 10, 5, "sixel")
+    ).toBeNull()
+  })
+
+  it("caches chafa output for the same image placement", () => {
+    let runs = 0
+    resetTerminalImageOutputCache()
+
+    withTempImage((filePath) => {
+      const runChafa = (): { status: number; stdout: string; stderr: string } => {
+        runs += 1
+        return { status: 0, stdout: "\x1bPqcached\x1b\\", stderr: "" }
+      }
+
+      expect(buildChafaImageOutput(filePath, 12, 6, "sixel", runChafa)).toBe("\x1bPqcached\x1b\\")
+      expect(buildChafaImageOutput(filePath, 12.9, 6.8, "sixel", runChafa)).toBe(
+        "\x1bPqcached\x1b\\"
+      )
+      expect(runs).toBe(1)
+    })
+
+    resetTerminalImageOutputCache()
   })
 
   it("keeps Kitty file-transfer commands path-based instead of embedding image bytes", () => {

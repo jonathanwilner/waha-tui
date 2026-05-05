@@ -126,6 +126,10 @@ type MediaPreviewState =
 
 const mediaPreviewCache = new Map<string, MediaPreviewState>()
 
+export function clearImagePreviewStateCache(): void {
+  mediaPreviewCache.clear()
+}
+
 export function getImagePreviewState(
   chatId: string,
   message: WAMessageExtended,

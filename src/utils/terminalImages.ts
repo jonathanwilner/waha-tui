@@ -15,16 +15,21 @@ interface ImagePlacement {
   height: number
 }
 
-export type TerminalImageProtocol = "kitty" | "sixel" | "symbols"
+export type TerminalImageProtocol = "kitty" | "sixel"
 
 export interface TerminalImageSupport {
-  protocol: Exclude<TerminalImageProtocol, "symbols">
+  protocol: TerminalImageProtocol
   passthrough: boolean
   command?: "chafa"
   reason: string
 }
 
 type TerminalEnv = NodeJS.ProcessEnv
+type ChafaRunner = (args: string[]) => {
+  status: number | null
+  stdout: string
+  stderr: string
+}
 
 const placements = new Map<string, ImagePlacement>()
 let frameRegistered = false
@@ -171,6 +176,10 @@ export function resetTerminalImageSupportCache(): void {
   cachedSupport = undefined
 }
 
+export function resetTerminalImageOutputCache(): void {
+  chafaOutputCache.clear()
+}
+
 export function supportsKittyImages(env: TerminalEnv = process.env): boolean {
   return detectKittyImageSupport(env).supported
 }
@@ -225,8 +234,13 @@ export function buildChafaImageCommandArgs(
   filePath: string,
   width: number,
   height: number,
-  protocol: Extract<TerminalImageProtocol, "sixel" | "symbols">
+  protocol: string
 ): string[] | null {
+  if (protocol !== "sixel") {
+    debugLog("TerminalImage", `Skipping unsupported chafa image protocol: ${protocol}`)
+    return null
+  }
+
   if (!isAbsolute(filePath)) {
     debugLog("TerminalImage", `Skipping non-absolute image preview path: ${filePath}`)
     return null
@@ -239,15 +253,25 @@ export function buildChafaImageCommandArgs(
 
   const columns = Math.max(1, Math.floor(width))
   const rows = Math.max(1, Math.floor(height))
-  const format = protocol === "sixel" ? "sixels" : "symbols"
-  return [`--format=${format}`, `--size=${columns}x${rows}`, filePath]
+  return ["--format=sixels", `--size=${columns}x${rows}`, filePath]
 }
 
-function buildChafaImageOutput(
+export function buildChafaImageOutput(
   filePath: string,
   width: number,
   height: number,
-  protocol: Extract<TerminalImageProtocol, "sixel" | "symbols">
+  protocol: string,
+  runChafa: ChafaRunner = (args) => {
+    const result = spawnSync("chafa", args, {
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024,
+    })
+    return {
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }
+  }
 ): string | null {
   const cacheKey = `${protocol}:${filePath}:${Math.max(1, Math.floor(width))}x${Math.max(1, Math.floor(height))}`
   if (chafaOutputCache.has(cacheKey)) {
@@ -260,10 +284,7 @@ function buildChafaImageOutput(
     return null
   }
 
-  const result = spawnSync("chafa", args, {
-    encoding: "utf8",
-    maxBuffer: 4 * 1024 * 1024,
-  })
+  const result = runChafa(args)
 
   if (result.status !== 0) {
     debugLog("TerminalImage", `chafa failed for image preview ${filePath}: ${result.stderr}`)

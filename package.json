@@ -42,6 +42,7 @@
     "check": "bun typecheck && bun lint && bun format:check && bun test",
     "fix": "bun lint:fix && bun format",
     "test": "bun test",
+    "smoke:live": "bash scripts/smoke-live.sh",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
     "start": "bun src/index.ts",

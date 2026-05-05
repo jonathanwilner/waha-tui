@@ -45,4 +45,37 @@ describe("galleryMessages", () => {
     expect(items.map((item) => item.message.id)).toEqual(["newer", "older"])
     expect(items.map((item) => item.chatName)).toEqual(["Grace", "Ada"])
   })
+
+  it("uses fallback chat names and deterministic ordering for timestamp ties", () => {
+    const chats = [
+      { id: "111@c.us", contact: { pushname: "Push Name" } },
+      { id: "222@c.us", formattedTitle: "Formatted Title" },
+    ] as unknown as ChatSummary[]
+    const messagesByChat = new Map<string, WAMessageExtended[]>([
+      [
+        "111@c.us",
+        [
+          message({ id: "b-tie", timestamp: 50, type: "image" }),
+          message({ id: undefined, timestamp: 60, type: "image" }),
+        ],
+      ],
+      ["222@c.us", [message({ id: "a-tie", timestamp: 50, mimetype: "image/gif" })]],
+      ["333@c.us", [message({ id: "fallback", timestamp: 40, type: "image" })]],
+      ["", [message({ id: "empty-chat", timestamp: 70, type: "image" })]],
+    ])
+
+    const items = getGalleryImageItems(chats, messagesByChat)
+
+    expect(items.map((item) => item.message.id)).toEqual(["a-tie", "b-tie", "fallback"])
+    expect(items.map((item) => item.chatName)).toEqual(["Formatted Title", "Push Name", "333"])
+  })
+
+  it("excludes status broadcast images from aggregated gallery items", () => {
+    const chats = [{ id: "status@broadcast", name: "Status" }] as unknown as ChatSummary[]
+    const messagesByChat = new Map<string, WAMessageExtended[]>([
+      ["status@broadcast", [message({ id: "status-image", timestamp: 99, type: "image" })]],
+    ])
+
+    expect(getGalleryImageItems(chats, messagesByChat)).toEqual([])
+  })
 })
