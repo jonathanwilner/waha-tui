@@ -14,7 +14,7 @@ import { debugLog } from "~/utils/debug"
 import { formatChatTimestamp, truncate } from "~/utils/formatters"
 import { getGalleryImageItems } from "~/utils/galleryMessages"
 import { getMediaLabel } from "~/utils/mediaLabels"
-import { supportsKittyImages, TerminalImageRenderable } from "~/utils/terminalImages"
+import { supportsTerminalImages, TerminalImageRenderable } from "~/utils/terminalImages"
 
 let galleryLoadState: "idle" | "loading" | "loaded" | "error" = "idle"
 
@@ -173,7 +173,7 @@ function GalleryPreview(item: GalleryImageItem | undefined) {
 
   const media = getMediaLabel(item.message)
   const caption = media.caption || item.message.body || ""
-  const previewState = supportsKittyImages()
+  const previewState = supportsTerminalImages()
     ? getImagePreviewState(item.chatId, item.message, () => appState.setLastChangeType("data"))
     : { status: "idle" as const }
 
