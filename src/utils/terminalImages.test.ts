@@ -32,23 +32,43 @@ function withTempImage(assertions: (filePath: string) => void): void {
 }
 
 describe("terminalImages", () => {
-  it("selects Kitty graphics for Ghostty without requiring chafa", () => {
+  it("selects Kitty graphics for Ghostty through chafa", () => {
     const support = detectTerminalImageSupport(
       { TERM_PROGRAM: "ghostty", TERM: "xterm-256color" },
+      hasCommands(["chafa"])
+    )
+
+    expect(support).toEqual({
+      protocol: "kitty",
+      passthrough: false,
+      command: "chafa",
+      reason: "kitty",
+    })
+  })
+
+  it("does not use remote file-path Kitty graphics for Ghostty without chafa", () => {
+    const support = detectTerminalImageSupport(
+      { TERM: "xterm-ghostty", SSH_CONNECTION: "192.0.2.1 50000 192.0.2.2 22" },
       hasCommands([])
     )
 
-    expect(support).toEqual({ protocol: "kitty", passthrough: false, reason: "kitty" })
+    expect(support).toBeNull()
   })
 
   it("uses tmux passthrough for known Kitty-capable terminals without sixel", () => {
     const support = detectTerminalImageSupport(
-      { TERM_PROGRAM: "WezTerm", TERM: "tmux-256color", TMUX: "/tmp/tmux" },
-      hasCommands([])
+      {
+        TERM_PROGRAM: "tmux",
+        TERM: "tmux-256color",
+        TMUX: "/tmp/tmux",
+        WAHA_TUI_TMUX_CLIENT_TERM: "xterm-kitty RGB,title",
+      },
+      hasCommands(["chafa"])
     )
 
     expect(support?.protocol).toBe("kitty")
     expect(support?.passthrough).toBe(true)
+    expect(support?.command).toBe("chafa")
   })
 
   it("prefers sixel for tmux clients that advertise sixel support", () => {
@@ -100,7 +120,7 @@ describe("terminalImages", () => {
       hasCommands([])
     )
 
-    expect(support).toEqual({ protocol: "kitty", passthrough: true, reason: "tmux-kitty" })
+    expect(support).toBeNull()
   })
 
   it("does not assume tmux alone means inline image support", () => {
@@ -167,10 +187,20 @@ describe("terminalImages", () => {
     expect(support).toBeNull()
   })
 
-  it("builds chafa command args with the selected terminal format", () => {
+  it("builds chafa sixel command args with the selected terminal format", () => {
     withTempImage((filePath) => {
       expect(buildChafaImageCommandArgs(filePath, 42.8, 18.2, "sixel")).toEqual([
         "--format=sixels",
+        "--size=42x18",
+        filePath,
+      ])
+    })
+  })
+
+  it("builds chafa Kitty command args for SSH-safe inline image data", () => {
+    withTempImage((filePath) => {
+      expect(buildChafaImageCommandArgs(filePath, 42.8, 18.2, "kitty")).toEqual([
+        "--format=kitty",
         "--size=42x18",
         filePath,
       ])
@@ -210,6 +240,28 @@ describe("terminalImages", () => {
     resetTerminalImageOutputCache()
   })
 
+  it("caches chafa Kitty output for the same image placement", () => {
+    let runs = 0
+    resetTerminalImageOutputCache()
+
+    withTempImage((filePath) => {
+      const runChafa = (): { status: number; stdout: string; stderr: string } => {
+        runs += 1
+        return { status: 0, stdout: "\x1b_Ga=T,f=32;data\x1b\\", stderr: "" }
+      }
+
+      expect(buildChafaImageOutput(filePath, 12, 6, "kitty", runChafa)).toBe(
+        "\x1b_Ga=T,f=32;data\x1b\\"
+      )
+      expect(buildChafaImageOutput(filePath, 12.9, 6.8, "kitty", runChafa)).toBe(
+        "\x1b_Ga=T,f=32;data\x1b\\"
+      )
+      expect(runs).toBe(1)
+    })
+
+    resetTerminalImageOutputCache()
+  })
+
   it("keeps Kitty file-transfer commands path-based instead of embedding image bytes", () => {
     withTempImage((filePath) => {
       const command = buildKittyFileImageCommand(filePath, 12, 5)
@@ -230,6 +282,5 @@ describe("terminalImages", () => {
 
     expect(tmuxPassthrough(command)).toBe(wrapped)
     expect(wrapKittyGraphics(command, { TERM: "xterm-kitty" })).toBe(command)
-    expect(wrapKittyGraphics(command, { TERM: "xterm-kitty", TMUX: "/tmp/tmux" })).toBe(wrapped)
   })
 })

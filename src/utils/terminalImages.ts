@@ -123,8 +123,13 @@ export function detectTerminalImageSupport(
   const chafaAvailable = (): boolean => hasCommand("chafa")
 
   if (forcedProtocol === "kitty") {
-    if (tmuxPassthroughDisabled) return null
-    const support = { protocol: "kitty", passthrough, reason: "forced-kitty" } as const
+    if (tmuxPassthroughDisabled || !chafaAvailable()) return null
+    const support = {
+      protocol: "kitty",
+      passthrough,
+      command: "chafa",
+      reason: "forced-kitty",
+    } as const
     debugLog("TerminalImage", `Detected ${support.protocol} support: ${support.reason}`)
     return support
   }
@@ -144,8 +149,8 @@ export function detectTerminalImageSupport(
   }
 
   if (env.WAHA_TUI_INLINE_IMAGES === "1") {
-    if (tmuxPassthroughDisabled) return null
-    const support = { protocol: "kitty", passthrough, reason: "forced" } as const
+    if (tmuxPassthroughDisabled || !chafaAvailable()) return null
+    const support = { protocol: "kitty", passthrough, command: "chafa", reason: "forced" } as const
     debugLog("TerminalImage", `Detected ${support.protocol} support: ${support.reason}`)
     return support
   }
@@ -159,10 +164,11 @@ export function detectTerminalImageSupport(
     debugLog("TerminalImage", `Detected ${support.protocol} support: ${support.reason}`)
     return support
   }
-  if (!tmuxPassthroughDisabled && hasKnownKittySupport(env)) {
+  if (!tmuxPassthroughDisabled && hasKnownKittySupport(env) && chafaAvailable()) {
     const support = {
       protocol: "kitty",
       passthrough,
+      command: "chafa",
       reason: passthrough ? "tmux-kitty" : "kitty",
     } as const
     debugLog("TerminalImage", `Detected ${support.protocol} support: ${support.reason}`)
@@ -262,7 +268,7 @@ export function buildChafaImageCommandArgs(
   height: number,
   protocol: string
 ): string[] | null {
-  if (protocol !== "sixel") {
+  if (protocol !== "sixel" && protocol !== "kitty") {
     debugLog("TerminalImage", `Skipping unsupported chafa image protocol: ${protocol}`)
     return null
   }
@@ -279,7 +285,8 @@ export function buildChafaImageCommandArgs(
 
   const columns = Math.max(1, Math.floor(width))
   const rows = Math.max(1, Math.floor(height))
-  return ["--format=sixels", `--size=${columns}x${rows}`, filePath]
+  const format = protocol === "sixel" ? "sixels" : "kitty"
+  return [`--format=${format}`, `--size=${columns}x${rows}`, filePath]
 }
 
 export function buildChafaImageOutput(
@@ -327,7 +334,7 @@ function buildTerminalImageOutput(
   placement: ImagePlacement,
   support: TerminalImageSupport
 ): string | null {
-  if (support.protocol === "kitty") {
+  if (support.protocol === "kitty" && support.command !== "chafa") {
     return buildKittyFileImageCommand(placement.filePath, placement.width, placement.height)
   }
 
