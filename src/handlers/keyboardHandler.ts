@@ -82,9 +82,7 @@ function isTabKey(key: KeyEvent): boolean {
 }
 
 function isEscapeKey(key: KeyEvent): boolean {
-  return (
-    key.name === "escape" || (key.name === "" && (key.raw === "\x1b" || key.sequence === "\x1b"))
-  )
+  return key.name === "escape" || key.name === ""
 }
 
 function blurActiveInput(state: AppState): void {
