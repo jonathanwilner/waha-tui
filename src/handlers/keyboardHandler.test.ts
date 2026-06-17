@@ -66,6 +66,7 @@ mock.module("~/components/Modal", () => ({
   showCaptionModal: mock(async () => null),
   showContactPickerModal: mock(async () => null),
   showFilePickerModal: mock(async () => null),
+  showPollModal: mock(async () => null),
 }))
 
 mock.module("~/components/Toast", () => ({

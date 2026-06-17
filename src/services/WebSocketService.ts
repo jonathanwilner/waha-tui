@@ -8,13 +8,16 @@ import {
   WAHAWebhookMessage,
   WAHAWebhookMessageAck,
   WAHAWebhookMessageAny,
+  WAHAWebhookMessageEdited,
   WAHAWebhookMessageReaction,
   WAHAWebhookMessageRevoked,
+  WAHAWebhookPollVote,
+  WAHAWebhookPollVoteFailed,
   WAHAWebhookSessionStatus,
 } from "@muhammedaksam/waha-node"
 
 import type { WahaTuiConfig } from "~/config/schema"
-import { loadChats, loadMessages } from "~/client"
+import { loadChats, loadLabels, loadMessages } from "~/client"
 import { TIME_MS } from "~/constants"
 import { CacheKeys, cacheService } from "~/services/CacheService"
 import { WebSocketError } from "~/services/Errors"
@@ -34,6 +37,8 @@ type WahaEvent =
   | WAHAWebhookMessageReaction
   | WAHAWebhookMessageRevoked
   | WAHAWebhookMessageAny
+  | WAHAWebhookPollVote
+  | WAHAWebhookPollVoteFailed
   | { event: "presence.update"; payload: WAHAChatPresences; session?: string }
 
 export class WebSocketService {
@@ -285,7 +290,7 @@ export class WebSocketService {
   }
 
   private async processEvent(data: WahaEvent) {
-    debugLog("WebSocket", `Event: ${data.event}`)
+    // debugLog("WebSocket", `Event: ${data.event}`)
 
     // Check if event is for the current session
     const state = appState.getState()
@@ -300,11 +305,21 @@ export class WebSocketService {
       case "session.status":
         this.handleSessionStatus(data as WAHAWebhookSessionStatus)
         break
+      case "message":
       case "message.any":
         await this.handleMessageEvent(data as WAHAWebhookMessage | WAHAWebhookMessageAny)
         break
       case "message.ack":
+      case "message.ack.group":
         this.handleMessageAck(data as WAHAWebhookMessageAck)
+        break
+      case "group.v2.update":
+        debugLog("WebSocket", `Group metadata updated: ${data.session}`)
+        if (state.currentChatId && isGroupChat(state.currentChatId)) {
+          // If we are viewing the group, reload its metadata
+          // The data structure for group.v2.update usually contains the chatId in the payload or we can reload current
+          loadChats() // Reload chat list to see new names/subjects
+        }
         break
       case "message.reaction":
         this.handleMessageReaction(data as WAHAWebhookMessageReaction)
@@ -312,11 +327,34 @@ export class WebSocketService {
       case "message.revoked":
         this.handleMessageRevoked(data as WAHAWebhookMessageRevoked)
         break
+      case "message.edited":
+        this.handleMessageEdited(data as WAHAWebhookMessageEdited)
+        break
       case "presence.update":
         this.handlePresenceUpdate(data as { event: "presence.update"; payload: WAHAChatPresences })
         break
       case "engine.event":
         // Ignore internal engine events to reduce log noise
+        break
+      case "poll.vote":
+        this.handlePollVote(data as WAHAWebhookPollVote)
+        break
+      case "poll.vote.failed":
+        this.handlePollVoteFailed(data as WAHAWebhookPollVoteFailed)
+        break
+      case "label.upsert":
+      case "label.deleted":
+        debugLog("WebSocket", `Label definitions changed (${data.event})`)
+        loadLabels().catch((error) => {
+          debugLog("WebSocket", `Failed to reload labels: ${error}`)
+        })
+        break
+      case "label.chat.added":
+      case "label.chat.deleted":
+        debugLog("WebSocket", `Chat labels changed (${data.event})`)
+        if (currentSession) {
+          this.scheduleLoadChats(currentSession)
+        }
         break
       default:
         debugLog("WebSocket", `Unhandled event: ${data.event}`)
@@ -436,11 +474,7 @@ export class WebSocketService {
     // Determine chat ID: for outgoing messages (fromMe: true), use 'to'; for incoming, use 'from'
     const chatId = payload.fromMe ? payload.to : payload.from
 
-    debugLog("WebSocket", `Received ack event for message ${payload.id}`)
-    debugLog("WebSocket", `  Chat ID: ${chatId}`)
-    debugLog("WebSocket", `  From Me: ${payload.fromMe}`)
-    debugLog("WebSocket", `  Ack: ${payload.ack} (${payload.ackName})`)
-    debugLog("WebSocket", `  Current chat: ${state.currentChatId}`)
+    debugLog("WebSocket", `Ack: ${payload.id} -> ${payload.ackName} (${payload.ack}) in ${chatId}`)
 
     // Update message ack in conversation view if it's the current chat
     if (state.currentChatId === chatId) {
@@ -483,14 +517,26 @@ export class WebSocketService {
     }
   }
 
+  private handleMessageEdited(data: WAHAWebhookMessageEdited) {
+    const payload = data.payload
+    if (!payload) return
+
+    // Determine chat ID: for outgoing messages (fromMe: true), use 'to'; for incoming, use 'from'
+    const chatId = payload.fromMe ? payload.to : payload.from
+    const messageId = payload.id
+    const newBody = payload.body
+
+    debugLog("WebSocket", `Message edited: ${messageId} in ${chatId}`)
+
+    const state = appState.getState()
+    if (state.currentChatId === chatId && messageId && newBody !== undefined) {
+      appState.updateMessageBody(chatId, messageId, newBody, true)
+    }
+  }
+
   private handlePresenceUpdate(data: { payload: WAHAChatPresences }) {
     const payload = data.payload
     const state = appState.getState()
-
-    debugLog(
-      "WebSocket",
-      `Presence update for: ${payload?.id}, current chat: ${state.currentChatId}`
-    )
 
     if (payload && payload.id) {
       // Filter out presence updates from ourselves
@@ -546,6 +592,40 @@ export class WebSocketService {
         appState.updateChatPresence(payload.id, payload)
       }
     }
+  }
+
+  private handlePollVote(data: WAHAWebhookPollVote) {
+    const payload = data.payload
+    if (!payload || !payload.poll || !payload.vote) return
+
+    // Identify which chat this message belongs to
+    const chatId = payload.poll.fromMe ? payload.poll.to : payload.poll.from
+    const pollMessageId = payload.poll.id
+    const voterId = payload.vote.from
+    const selectedOptions = payload.vote.selectedOptions || []
+
+    /*
+    debugLog(
+      "WebSocket",
+      `Received poll vote for message ${pollMessageId} in chat ${chatId} from ${voterId}`
+    )
+    */
+
+    // Manually update the vote in state since WEBJS doesn't update the poll creation message summary
+    appState.updatePollVote(chatId, pollMessageId, voterId, selectedOptions)
+
+    const state = appState.getState()
+    // If we are currently viewing this chat, refresh messages to show updated counts from server eventually
+    if (state.currentChatId === chatId) {
+      // Small delay to allow potential other events to arrive
+      setTimeout(() => {
+        this.scheduleLoadMessages(chatId)
+      }, 500)
+    }
+  }
+
+  private handlePollVoteFailed(_data: WAHAWebhookPollVoteFailed) {
+    // debugLog("WebSocket", `Poll vote failed: ${data.payload?.vote?.id}`)
   }
 }
 

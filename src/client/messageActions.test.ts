@@ -63,13 +63,13 @@ describe("messageActions gallery helpers", () => {
       expect(getChatMessages).toHaveBeenCalledWith("test-session", "empty@c.us", {
         limit: 50,
         downloadMedia: false,
-        sortBy: "messageTimestamp",
+        sortBy: "timestamp",
         sortOrder: "desc",
       })
       expect(getChatMessages).toHaveBeenCalledWith("test-session", "missing@c.us", {
         limit: 50,
         downloadMedia: false,
-        sortBy: "messageTimestamp",
+        sortBy: "timestamp",
         sortOrder: "desc",
       })
     })
@@ -86,13 +86,13 @@ describe("messageActions gallery helpers", () => {
       expect(getChatMessages).toHaveBeenCalledWith("test-session", "first@c.us", {
         limit: 50,
         downloadMedia: false,
-        sortBy: "messageTimestamp",
+        sortBy: "timestamp",
         sortOrder: "desc",
       })
       expect(getChatMessages).toHaveBeenCalledWith("test-session", "second@c.us", {
         limit: 50,
         downloadMedia: false,
-        sortBy: "messageTimestamp",
+        sortBy: "timestamp",
         sortOrder: "desc",
       })
     })

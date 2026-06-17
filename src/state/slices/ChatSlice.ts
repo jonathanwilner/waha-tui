@@ -1,8 +1,27 @@
-import type { ChatSummary, GroupParticipant, WAHAChatPresences } from "@muhammedaksam/waha-node"
+import type {
+  ChatSummary,
+  GroupParticipant,
+  Label,
+  WAHAChatPresences,
+} from "@muhammedaksam/waha-node"
 
 import { SliceActions, StateSlice } from "~/state/slices/types"
 import { debugLog } from "~/utils/debug"
 import { normalizeId } from "~/utils/formatters"
+
+export interface GroupMetadata {
+  id: string
+  subject: string
+  desc?: string
+  owner?: string
+  creation?: number
+  participants: GroupParticipant[]
+  ephemeralDuration?: number // Message expiration timer in seconds
+  membersCanAddNewMember?: boolean
+  membersCanSendMessages?: boolean
+  newMembersApprovalRequired?: boolean
+  membersCanChangeGroupInfo?: boolean
+}
 
 export interface ChatState {
   currentChatId: string | null
@@ -12,6 +31,8 @@ export interface ChatState {
   currentChatParticipants: GroupParticipant[] | null
   showingArchivedChats: boolean
   lidToPhoneMap: Map<string, string> // Moved here as it's relevant to chat/presence
+  labels: Label[]
+  currentGroupMetadata: GroupMetadata | null // Metadata for the currently viewed group
 }
 
 export const initialChatState: ChatState = {
@@ -22,6 +43,8 @@ export const initialChatState: ChatState = {
   currentChatParticipants: null,
   showingArchivedChats: false,
   lidToPhoneMap: new Map(),
+  labels: [],
+  currentGroupMetadata: null,
 }
 
 export interface ChatActions extends SliceActions<ChatState> {
@@ -37,7 +60,12 @@ export interface ChatActions extends SliceActions<ChatState> {
   clearTypingForSender(senderId: string): void
   setLidToPhoneMap(lidToPhoneMap: Map<string, string>): void
   addLidMappings(mappings: Array<{ lid?: string; pn?: string }>): void
+  addLidMappings(mappings: Array<{ lid?: string; pn?: string }>): void
   getPhoneFromLid(lid: string): string | undefined
+  setLabels(labels: Label[]): void
+  setCurrentGroupMetadata(metadata: GroupMetadata | null): void
+  updateGroupMetadata(chatId: string, updates: Partial<GroupMetadata>): void
+  updateChatEphemeralDuration(chatId: string, duration: number): void
 }
 
 export function createChatSlice(): StateSlice<ChatState> & ChatActions {
@@ -84,6 +112,11 @@ export function createChatSlice(): StateSlice<ChatState> & ChatActions {
 
     setChats(chats: ChatSummary[]) {
       state = { ...state, chats }
+      notify()
+    },
+
+    setLabels(labels: Label[]) {
+      state = { ...state, labels }
       notify()
     },
 
@@ -326,6 +359,49 @@ export function createChatSlice(): StateSlice<ChatState> & ChatActions {
 
     getPhoneFromLid(lid: string): string | undefined {
       return state.lidToPhoneMap.get(lid)
+    },
+
+    setCurrentGroupMetadata(metadata: GroupMetadata | null) {
+      state = { ...state, currentGroupMetadata: metadata }
+      notify()
+    },
+    updateGroupMetadata(chatId: string, updates: Partial<GroupMetadata>) {
+      if (state.currentGroupMetadata && state.currentGroupMetadata.id === chatId) {
+        state = {
+          ...state,
+          currentGroupMetadata: {
+            ...state.currentGroupMetadata,
+            ...updates,
+          },
+        }
+        notify()
+      }
+    },
+
+    updateChatEphemeralDuration(chatId: string, duration: number) {
+      // Update in currentGroupMetadata if it matches
+      if (state.currentGroupMetadata && state.currentGroupMetadata.id === chatId) {
+        state = {
+          ...state,
+          currentGroupMetadata: {
+            ...state.currentGroupMetadata,
+            ephemeralDuration: duration,
+          },
+        }
+      }
+
+      // Also update in chats list
+      const chatIndex = state.chats.findIndex((c) => normalizeId(c.id) === normalizeId(chatId))
+      if (chatIndex !== -1) {
+        const newChats = [...state.chats]
+        const chat = newChats[chatIndex] as ChatSummary & { _chat: { ephemeralDuration?: number } }
+        if (chat._chat) {
+          chat._chat.ephemeralDuration = duration
+        }
+        state = { ...state, chats: newChats }
+      }
+
+      notify()
     },
   }
 }

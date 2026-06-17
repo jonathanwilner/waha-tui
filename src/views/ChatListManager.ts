@@ -42,6 +42,7 @@ interface ChatRowData {
   nameText: TextRenderable
   timeText: TextRenderable
   timeUnreadContainer: BoxRenderable
+  labelsContainer: BoxRenderable
   unreadBadge: TextRenderable | null
   chatInfo: BoxRenderable
   messageRow: BoxRenderable
@@ -57,9 +58,11 @@ interface ExtendedChatSummary extends Omit<ChatSummary, "lastMessage" | "_chat">
   }
   unreadCount?: number | null
   isMuted?: boolean
+  labels?: string[]
   _chat?: {
     unreadCount?: number | null
     isMuted?: boolean
+    labels?: string[]
   }
 }
 
@@ -284,7 +287,7 @@ class ChatListManager {
     // Avatar
     const avatar = new BoxRenderable(renderer, {
       id: `avatar-${index}`,
-      width: 7,
+      width: 6,
       height: 3,
       justifyContent: "center",
       alignItems: "center",
@@ -341,6 +344,14 @@ class ChatListManager {
     })
     timeContainer.add(timeText)
     timeUnreadContainer.add(timeContainer)
+
+    const labelsContainer = new BoxRenderable(renderer, {
+      id: `labels-container-${index}`,
+      flexDirection: "row",
+      gap: 1,
+    })
+    timeUnreadContainer.add(labelsContainer)
+    this.renderLabels(labelsContainer, chat as unknown as ExtendedChatSummary)
 
     let unreadBadge: TextRenderable | null = null
     const extChat = chat as unknown as ExtendedChatSummary
@@ -414,6 +425,19 @@ class ChatListManager {
       )
     }
 
+    // Add disappearing messages icon if enabled
+    const disappearingMode = (
+      chat as unknown as { _chat?: { disappearingMode?: { duration?: number } } }
+    )._chat?.disappearingMode
+    if (disappearingMode && disappearingMode.duration && disappearingMode.duration > 0) {
+      messageRow.add(
+        new TextRenderable(renderer, {
+          content: "⏱️",
+          fg: WhatsAppTheme.textTertiary,
+        })
+      )
+    }
+
     chatInfo.add(messageRow)
 
     chatRow.add(chatInfo)
@@ -427,6 +451,7 @@ class ChatListManager {
       nameText,
       timeText,
       timeUnreadContainer,
+      labelsContainer,
       unreadBadge,
       chatInfo,
       messageRow,
@@ -483,34 +508,42 @@ class ChatListManager {
       rowData.timeText.content = preview.timestamp
 
       // 5. Message Preview - check for typing status
+      const extChat = chat as unknown as ExtendedChatSummary
       const isTyping = appState.isChatTyping(chatIdStr)
+
+      // Update labels by recreating the container to maintain order before unreadBadge
+      if (rowData.labelsContainer) {
+        rowData.labelsContainer.destroyRecursively()
+      }
+      rowData.labelsContainer = new BoxRenderable(this.renderer!, {
+        id: `labels-container-${index}`,
+        flexDirection: "row",
+        gap: 1,
+      })
+      rowData.timeUnreadContainer.add(rowData.labelsContainer)
+      this.renderLabels(rowData.labelsContainer, extChat)
+
       rowData.messageText.content = isTyping ? "typing..." : truncate(lastMessageText, 50)
       rowData.messageText.fg = isTyping ? WhatsAppTheme.green : WhatsAppTheme.textSecondary
 
       // 6. Update unread badge
-      const extChat = chat as unknown as ExtendedChatSummary
+      // We destroy and recreate it to ensure it stays at the end of timeUnreadContainer after labels
+      if (rowData.unreadBadge) {
+        rowData.unreadBadge.destroyRecursively()
+        rowData.unreadBadge = null
+      }
+
       if (extChat.unreadCount && extChat.unreadCount > 0) {
         const count = extChat.unreadCount > 20 ? "20+" : `${extChat.unreadCount}`
 
-        if (rowData.unreadBadge) {
-          // Update existing badge
-          rowData.unreadBadge.content = ` ${count} `
-        } else {
-          const badge = new TextRenderable(this.renderer!, {
-            content: ` ${count} `,
-            fg: WhatsAppTheme.white,
-            bg: WhatsAppTheme.green,
-            attributes: TextAttributes.BOLD,
-          })
-          rowData.timeUnreadContainer.add(badge)
-          rowData.unreadBadge = badge
-        }
-      } else {
-        // Remove badge if no unread messages
-        if (rowData.unreadBadge) {
-          rowData.unreadBadge.destroy()
-          rowData.unreadBadge = null
-        }
+        const badge = new TextRenderable(this.renderer!, {
+          content: ` ${count} `,
+          fg: WhatsAppTheme.white,
+          bg: WhatsAppTheme.green,
+          attributes: TextAttributes.BOLD,
+        })
+        rowData.timeUnreadContainer.add(badge)
+        rowData.unreadBadge = badge
       }
 
       // 7. Update Ack Status
@@ -705,6 +738,23 @@ class ChatListManager {
     this.currentChatsHash = ""
     this.currentStructureHash = ""
     this.renderer = null
+  }
+
+  private renderLabels(container: BoxRenderable, chat: ExtendedChatSummary) {
+    const state = appState.getState()
+    const labelIds = chat.labels || chat._chat?.labels || []
+
+    for (const labelId of labelIds) {
+      const labelDef = state.labels.find((l) => l.id === labelId)
+      if (labelDef && labelDef.name) {
+        container.add(
+          new TextRenderable(this.renderer!, {
+            content: `[${labelDef.name}]`,
+            fg: labelDef.colorHex || WhatsAppTheme.textSecondary,
+          })
+        )
+      }
+    }
   }
 }
 

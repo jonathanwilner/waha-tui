@@ -3,7 +3,7 @@ import type { TextChunk } from "@opentui/core"
 import { fg } from "@opentui/core"
 
 import { Icons, WhatsAppTheme } from "~/config/theme"
-import { debugLog } from "~/utils/debug"
+import { WAMessageExtended } from "~/types"
 import { getMediaLabel } from "~/utils/mediaLabels"
 
 /**
@@ -104,7 +104,7 @@ export function extractMessagePreview(lastMessageObj: unknown): MessagePreview {
 
   // Use shared media label utility for consistent detection
   // We cast to WAMessageExtended-like shape since getMediaLabel reads the same fields
-  const mediaInfo = getMediaLabel(msg as import("~/types").WAMessageExtended)
+  const mediaInfo = getMediaLabel(msg as WAMessageExtended)
 
   // Extract message text
   let text = ""
@@ -291,7 +291,6 @@ export function isStatusBroadcast(chatId: string): boolean {
  *   - @lid: Linked Identity suffix (used in self-chats and some internal references)
  */
 export function isSelfChat(chatId: string, myProfileId: string | null): boolean {
-  debugLog("isSelfChat", `chatId ${chatId}, myProfileId ${myProfileId}`)
   if (!myProfileId) return false
   return normalizeId(chatId) === normalizeId(myProfileId)
 }
@@ -329,7 +328,7 @@ export function normalizeId(
  * @example getPhoneNumber("1234567890@lid") → "1234567890"
  */
 export function getPhoneNumber(id: string | undefined | null): string {
-  if (!id) return ""
+  if (!id || typeof id !== "string") return ""
   return id.split("@")[0]
 }
 

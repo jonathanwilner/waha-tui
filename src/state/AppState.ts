@@ -6,6 +6,7 @@
 import type {
   ChatSummary,
   GroupParticipant,
+  Label,
   MyProfile,
   SessionDTO,
   WAHAChatPresences,
@@ -23,6 +24,7 @@ import type {
   ContactState,
   ContextMenuState,
   ContextMenuType,
+  EmojiPickerState,
   MessageState,
   ModalState,
   NavigationState,
@@ -31,6 +33,8 @@ import type {
   SessionState,
   SettingsPage,
   SettingsState,
+  SidebarSubView,
+  SidebarView,
   UIState,
   ViewType,
 } from "~/state/slices"
@@ -48,6 +52,7 @@ import {
   createSettingsSlice,
   createUISlice,
 } from "~/state/slices"
+import { GroupMetadata } from "~/state/slices/ChatSlice"
 import { getChatIdString } from "~/utils/formatters"
 import { dismissUpdate } from "~/utils/update-checker"
 
@@ -63,6 +68,8 @@ export type {
   NotificationSettings,
   PairingStatus,
   SettingsPage,
+  SidebarSubView,
+  SidebarView,
   ViewType,
 }
 
@@ -244,8 +251,21 @@ class StateManager {
     this.uiSlice.setCurrentView(currentChatId ? "conversation" : "chats")
   }
 
+  setRightSidebar(view: SidebarView): void {
+    this.uiSlice.setRightSidebar(view)
+  }
+
+  setRightSidebarSubView(subView: SidebarSubView): void {
+    this.uiSlice.setRightSidebarSubView(subView)
+  }
+
   setChats(chats: ChatSummary[]): void {
     this.chatSlice.setChats(chats)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  setLabels(labels: Label[]): void {
+    this.chatSlice.setLabels(labels)
     this.navigationSlice.set({ lastChangeType: "data" })
   }
 
@@ -321,6 +341,16 @@ class StateManager {
     this.navigationSlice.set({ lastChangeType: "data" })
   }
 
+  updatePollVote(
+    chatId: string,
+    pollMessageId: string,
+    voterId: string,
+    selectedOptions: string[]
+  ): void {
+    this.messageSlice.updatePollVote(chatId, pollMessageId, voterId, selectedOptions)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
   updateMessageReaction(
     chatId: string,
     messageId: string,
@@ -333,6 +363,16 @@ class StateManager {
 
   markMessageRevoked(chatId: string, messageId: string): void {
     this.messageSlice.markMessageRevoked(chatId, messageId)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  updateMessageBody(chatId: string, messageId: string, newBody: string, isEdited?: boolean): void {
+    this.messageSlice.updateMessageBody(chatId, messageId, newBody, isEdited)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  replaceMessage(chatId: string, messageId: string, newMessage: WAMessage): void {
+    this.messageSlice.replaceMessage(chatId, messageId, newMessage)
     this.navigationSlice.set({ lastChangeType: "data" })
   }
 
@@ -355,9 +395,76 @@ class StateManager {
   setInputHeight(inputHeight: number): void {
     this.messageSlice.setInputHeight(inputHeight)
   }
-
   setReplyingToMessage(message: WAMessageExtended | WAMessage | null): void {
     this.messageSlice.setReplyingToMessage(message)
+  }
+  // Multi-select
+  toggleSelectionMode(chatId: string): void {
+    this.messageSlice.toggleSelectionMode(chatId)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  toggleMessageSelection(chatId: string, messageId: string): void {
+    this.messageSlice.toggleMessageSelection(chatId, messageId)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  clearMessageSelection(chatId: string): void {
+    this.messageSlice.clearMessageSelection(chatId)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  selectAllMessages(chatId: string): void {
+    this.messageSlice.selectAllMessages(chatId)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  // Pagination
+  setHasMoreMessages(chatId: string, hasMore: boolean): void {
+    this.messageSlice.setHasMoreMessages(chatId, hasMore)
+  }
+
+  setIsLoadingMore(chatId: string, isLoading: boolean): void {
+    this.messageSlice.setIsLoadingMore(chatId, isLoading)
+  }
+
+  setCurrentGroupMetadata(metadata: GroupMetadata | null): void {
+    this.chatSlice.setCurrentGroupMetadata(metadata)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  updateGroupMetadata(chatId: string, updates: Partial<GroupMetadata>): void {
+    this.chatSlice.updateGroupMetadata(chatId, updates)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  updateChatEphemeralDuration(chatId: string, duration: number): void {
+    this.chatSlice.updateChatEphemeralDuration(chatId, duration)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  // In-chat message search
+  setMessageSearchActive(active: boolean): void {
+    this.messageSlice.setSearchActive(active)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  setMessageSearchQuery(query: string): void {
+    const chatId = this.getState().currentChatId
+    if (chatId) {
+      this.messageSlice.setSearchQuery(query, chatId)
+      this.navigationSlice.set({ lastChangeType: "data" })
+    }
+  }
+
+  navigateMessageSearchResult(direction: 1 | -1): void {
+    this.messageSlice.navigateSearchResult(direction)
+    this.navigationSlice.set({ lastChangeType: "data" })
+  }
+
+  clearMessageSearch(): void {
+    this.messageSlice.clearSearch()
+    this.navigationSlice.set({ lastChangeType: "data" })
   }
 
   // Navigation
@@ -450,7 +557,7 @@ class StateManager {
   }
 
   // Emoji Picker
-  setEmojiPicker(emojiPicker: import("~/state/slices").EmojiPickerState | null): void {
+  setEmojiPicker(emojiPicker: EmojiPickerState | null): void {
     this.modalSlice.setEmojiPicker(emojiPicker)
   }
 

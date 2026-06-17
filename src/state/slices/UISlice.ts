@@ -11,7 +11,19 @@ export type ViewType =
   | "qr"
   | "loading"
 
-export type ActiveFilter = "all" | "unread" | "favorites" | "groups"
+export type SidebarView = "none" | "group-info" | "contact-info"
+export type SidebarSubView =
+  | "main"
+  | "permissions"
+  | "admins"
+  | "media"
+  | "starred"
+  | "privacy"
+  | "disappearing-messages"
+  | "advanced-privacy"
+  | "member-changes"
+
+export type ActiveFilter = "all" | "unread" | "favorites" | "groups" | "labeled"
 export type ActiveIcon =
   | "chats"
   | "status"
@@ -27,6 +39,8 @@ export interface UIState {
   activeIcon: ActiveIcon
   sidebarFocused: boolean
   searchQuery: string
+  rightSidebar: SidebarView
+  rightSidebarSubView: SidebarSubView
 }
 
 export const initialUIState: UIState = {
@@ -35,6 +49,8 @@ export const initialUIState: UIState = {
   activeIcon: "chats",
   sidebarFocused: false,
   searchQuery: "",
+  rightSidebar: "none",
+  rightSidebarSubView: "main",
 }
 
 export interface UIActions extends SliceActions<UIState> {
@@ -43,6 +59,8 @@ export interface UIActions extends SliceActions<UIState> {
   setSearchQuery(searchQuery: string): void
   setActiveIcon(activeIcon: ActiveIcon): void
   setSidebarFocused(sidebarFocused: boolean): void
+  setRightSidebar(view: SidebarView): void
+  setRightSidebarSubView(subView: SidebarSubView): void
 }
 
 export function createUISlice(): StateSlice<UIState> & UIActions {
@@ -99,6 +117,15 @@ export function createUISlice(): StateSlice<UIState> & UIActions {
 
     setSidebarFocused(sidebarFocused: boolean) {
       state = { ...state, sidebarFocused }
+      notify()
+    },
+
+    setRightSidebar(view: SidebarView) {
+      state = { ...state, rightSidebar: view, rightSidebarSubView: "main" }
+      notify()
+    },
+    setRightSidebarSubView(subView: SidebarSubView) {
+      state = { ...state, rightSidebarSubView: subView }
       notify()
     },
   }
